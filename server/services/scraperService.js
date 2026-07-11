@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { dbGet } from '../db.js';
+import { dbService } from './dbService.js';
 
 // Generates highly realistic Brazilian companies based on query and city
 function generateMockLeads(query, city) {
@@ -108,6 +108,17 @@ function generateMockLeads(query, city) {
   const count = 8; // Number of leads to generate per search
   const leads = [];
 
+  // Generate realistic coordinates for the city
+  const baseCoords = {
+    'são paulo': { lat: -23.5505, lng: -46.6333 },
+    'rio de janeiro': { lat: -22.9068, lng: -43.1729 },
+    'belo horizonte': { lat: -19.9191, lng: -43.9378 },
+    'porto alegre': { lat: -30.0346, lng: -51.2177 },
+    'curitiba': { lat: -25.4290, lng: -49.2671 },
+    'salvador': { lat: -12.9714, lng: -38.5014 }
+  };
+  const center = baseCoords[cityKey] || { lat: -23.5505, lng: -46.6333 };
+
   for (let i = 0; i < count; i++) {
     const pre = prefixes[Math.floor(Math.random() * prefixes.length)];
     const suf = suffixes[Math.floor(Math.random() * suffixes.length)];
@@ -151,6 +162,24 @@ function generateMockLeads(query, city) {
     
     const slugName = companyName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
 
+    // Add coordinates offset
+    const lat = parseFloat((center.lat + (Math.random() - 0.5) * 0.05).toFixed(6));
+    const lng = parseFloat((center.lng + (Math.random() - 0.5) * 0.05).toFixed(6));
+    
+    // Add schedule
+    const schedule = 'Segunda a Sexta: 08:00 - 18:00, Sábado: 09:00 - 13:00';
+
+    const mockReviewsList = [
+      { author: "Carlos Silva", rating: 5, text: "Excelente atendimento, profissionais super atenciosos e qualidade impecável!", date: "Há 2 semanas" },
+      { author: "Mariana Costa", rating: 4, text: "Muito bom o serviço, recomendo bastante na região.", date: "Há 1 mês" },
+      { author: "João Souza", rating: 5, text: "O melhor custo-benefício que encontrei na cidade. Recomendo de olhos fechados.", date: "Há 3 meses" }
+    ];
+    const mockGalleryList = [
+      "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=500&auto=format&fit=crop&q=60",
+      "https://images.unsplash.com/photo-1498804103079-a6351b050096?w=500&auto=format&fit=crop&q=60",
+      "https://images.unsplash.com/photo-1464618663641-bbdd760ae84a?w=500&auto=format&fit=crop&q=60"
+    ];
+
     leads.push({
       name: companyName,
       segment: matched.name,
@@ -171,7 +200,12 @@ function generateMockLeads(query, city) {
       gmaps_link: `https://google.com/maps/place/${encodeURIComponent(companyName + ' ' + city)}`,
       instagram_link: `https://instagram.com/${slugName}`,
       status: 'Novo Lead',
-      has_website: hasWebsite ? 1 : 0
+      has_website: hasWebsite ? 1 : 0,
+      latitude: lat,
+      longitude: lng,
+      schedule: schedule,
+      reviews: mockReviewsList,
+      gallery: mockGalleryList
     });
   }
 
@@ -194,7 +228,7 @@ async function searchRealPlaces(query, city, apiKey) {
 
     // For each result, get details
     for (const place of results.slice(0, 10)) { // Limit to 10 for performance
-      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,international_phone_number,website,rating,user_ratings_total,formatted_address,url,editorial_summary,types&key=${apiKey}&language=pt-BR`;
+      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,international_phone_number,website,rating,user_ratings_total,formatted_address,url,editorial_summary,types,geometry,opening_hours,reviews,photos&key=${apiKey}&language=pt-BR`;
       
       let details = {};
       try {
@@ -226,6 +260,25 @@ async function searchRealPlaces(query, city, apiKey) {
       
       const slugName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
 
+      // Parse latitude, longitude, and opening hours
+      const lat = place.geometry?.location?.lat || details.geometry?.location?.lat || 0;
+      const lng = place.geometry?.location?.lng || details.geometry?.location?.lng || 0;
+      const weekdayText = details.opening_hours?.weekday_text;
+      const schedule = weekdayText ? weekdayText.join(', ') : 'Segunda a Sexta: 08:00 - 18:00';
+
+      // Parse reviews
+      const reviews = details.reviews ? details.reviews.map(r => ({
+        author: r.author_name,
+        rating: r.rating,
+        text: r.text,
+        date: r.relative_time_description
+      })) : [];
+
+      // Parse gallery (photos)
+      const gallery = details.photos ? details.photos.slice(0, 3).map(p => 
+        `https://maps.googleapis.com/maps/api/place/photo?maxwidth=500&photo_reference=${p.photo_reference}&key=${apiKey}`
+      ) : [];
+
       leads.push({
         name: name,
         segment: query,
@@ -246,7 +299,12 @@ async function searchRealPlaces(query, city, apiKey) {
         gmaps_link: details.url || `https://google.com/maps/place/?q=place_id:${place.place_id}`,
         instagram_link: '',
         status: 'Novo Lead',
-        has_website: website ? 1 : 0
+        has_website: website ? 1 : 0,
+        latitude: lat,
+        longitude: lng,
+        schedule: schedule,
+        reviews: reviews,
+        gallery: gallery
       });
     }
     
@@ -261,8 +319,7 @@ export const searchCompanies = async (query, city) => {
   // Check if Google Places API key is set in database
   let apiKey = '';
   try {
-    const setting = await dbGet("SELECT value FROM settings WHERE key = 'google_places_api_key'");
-    apiKey = setting ? setting.value : '';
+    apiKey = await dbService.settings.getSettingByKey('google_places_api_key');
   } catch (err) {
     console.error('Error fetching settings:', err.message);
   }

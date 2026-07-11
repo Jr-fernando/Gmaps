@@ -1,5 +1,5 @@
 import express from 'express';
-import { dbAll, dbGet, dbRun } from './db.js';
+import { dbService } from './services/dbService.js';
 import { searchCompanies } from './services/scraperService.js';
 import { analyzePresence } from './services/presenceService.js';
 import { generateAiReport, generateProposalText, chatWithLeadAi } from './services/aiService.js';
@@ -10,14 +10,10 @@ const router = express.Router();
 // Helper to schedule follow-ups
 async function scheduleFollowUpsForLead(leadId, companyName, contactName) {
   // Clear any existing scheduled follow-ups first
-  await dbRun("DELETE FROM follow_ups WHERE lead_id = ? AND status = 'Agendado'", [leadId]);
+  await dbService.followUps.deleteScheduledFollowUps(leadId);
 
   // Load templates
-  const templates = {};
-  const settingsRows = await dbAll("SELECT key, value FROM settings WHERE key LIKE 'follow_up_day_%'");
-  for (const row of settingsRows) {
-    templates[row.key] = row.value;
-  }
+  const templates = await dbService.settings.getSettings();
 
   const namePlaceholder = contactName || 'parceiro';
   const replaceTags = (text) => {
@@ -38,12 +34,10 @@ async function scheduleFollowUpsForLead(leadId, companyName, contactName) {
 
   for (const interval of intervals) {
     const scheduledTime = new Date(now);
-    // For demo/testing, we can check if a setting 'fast_follow_up_mode' exists and schedule in minutes
-    const fastModeRow = await dbGet("SELECT value FROM settings WHERE key = 'fast_follow_up_mode'");
-    const isFastMode = fastModeRow?.value === 'true';
+    const isFastMode = templates['fast_follow_up_mode'] === 'true';
     
     if (isFastMode) {
-      // Fast mode: Schedule in minutes instead of days (2 min, 5 min, 10 min)
+      // Fast mode: Schedule in minutes instead of days
       scheduledTime.setMinutes(now.getMinutes() + interval.daysToAdd);
     } else {
       scheduledTime.setDate(now.getDate() + interval.daysToAdd);
@@ -51,10 +45,11 @@ async function scheduleFollowUpsForLead(leadId, companyName, contactName) {
 
     const message = replaceTags(templates[interval.key] || '');
 
-    await dbRun(
-      `INSERT INTO follow_ups (lead_id, sequence_day, message, status, scheduled_for) 
-       VALUES (?, ?, ?, 'Agendado', ?)`,
-      [leadId, interval.day, message, scheduledTime.toISOString()]
+    await dbService.followUps.createFollowUp(
+      leadId,
+      interval.day,
+      message,
+      scheduledTime.toISOString()
     );
   }
 }
@@ -62,41 +57,22 @@ async function scheduleFollowUpsForLead(leadId, companyName, contactName) {
 // 1. Dashboard statistics
 router.get('/dashboard/stats', async (req, res) => {
   try {
-    const totalLeads = await dbGet('SELECT COUNT(*) as count FROM leads');
-    const newLeads = await dbGet("SELECT COUNT(*) as count FROM leads WHERE date(created_at) = date('now') OR status = 'Novo Lead'");
-    const messagesSent = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status NOT IN ('Novo Lead', 'Entrar em contato')");
-    const replies = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status IN ('Respondeu', 'Negociação', 'Proposta enviada', 'Cliente')");
-    const closed = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status = 'Cliente'");
-    const lost = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status = 'Perdido'");
+    const stats = await dbService.leads.getStats();
     
-    // Segment breakdown
-    const segments = await dbAll(
-      `SELECT segment, COUNT(*) as count 
-       FROM leads 
-       GROUP BY segment 
-       ORDER BY count DESC 
-       LIMIT 5`
-    );
-
     // Hardcoded demo values for value sold and responses conversion to make metrics gorgeous
-    const conversionRate = totalLeads.count > 0 
-      ? parseFloat(((closed.count / totalLeads.count) * 100).toFixed(1)) 
+    const conversionRate = stats.totalLeads > 0 
+      ? parseFloat(((stats.closed / stats.totalLeads) * 100).toFixed(1)) 
       : 0;
     
-    const responseRate = messagesSent.count > 0 
-      ? parseFloat(((replies.count / messagesSent.count) * 100).toFixed(1)) 
+    const responseRate = stats.messagesSent > 0 
+      ? parseFloat(((stats.replies / stats.messagesSent) * 100).toFixed(1)) 
       : 0;
 
     res.json({
-      totalLeads: totalLeads.count,
-      newLeads: newLeads.count,
-      messagesSent: messagesSent.count,
-      replies: replies.count,
+      ...stats,
       responseRate: responseRate || 34.5, // fallback for empty db aesthetics
-      closed: closed.count,
       conversionRate: conversionRate || 12.0, // fallback for empty db aesthetics
-      valueSold: closed.count * 2500, // Estimated value
-      segmentsRank: segments
+      valueSold: stats.closed * 2500, // Estimated value
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -117,12 +93,8 @@ router.post('/leads/search', async (req, res) => {
     const now = new Date().toISOString();
 
     for (const company of companies) {
-      // Check if lead already exists in DB by name and phone/website
-      const existing = await dbGet(
-        "SELECT id FROM leads WHERE name = ? AND city = ?",
-        [company.name, company.city]
-      );
-
+      // Check if lead already exists in DB by name and city
+      const existing = await dbService.leads.findLeadByNameAndCity(company.name, company.city);
       if (existing) {
         console.log(`[API] Lead "${company.name}" já existe no banco. Ignorando.`);
         continue;
@@ -135,10 +107,22 @@ router.post('/leads/search', async (req, res) => {
       const leadData = {
         ...company,
         opportunity_score: analysis.opportunityScore,
-        website_analysis: JSON.stringify(analysis.websiteAnalysis),
-        social_analysis: JSON.stringify(analysis.socialAnalysis),
+        website_analysis: analysis.websiteAnalysis,
+        social_analysis: analysis.socialAnalysis,
         created_at: now,
-        updated_at: now
+        updated_at: now,
+        owner: '',
+        value_negotiated: 0,
+        next_action: '',
+        notes: '',
+        schedule: company.schedule || '',
+        reviews: company.reviews || [],
+        gallery: company.gallery || [],
+        first_contact_date: '',
+        last_contact_date: '',
+        history: [],
+        proposal_text: '',
+        proposal_sent: 0
       };
 
       // Generate AI Report and prospecting message (first message)
@@ -146,27 +130,9 @@ router.post('/leads/search', async (req, res) => {
       leadData.ai_report = ai.aiReport;
       leadData.first_message = ai.firstMessage;
 
-      // Save to database
-      const insertResult = await dbRun(
-        `INSERT INTO leads (
-          name, segment, phone, whatsapp, email, website, instagram, facebook,
-          city, state, address, rating, reviews_count, followers, description,
-          category, gmaps_link, instagram_link, status, opportunity_score,
-          has_website, website_analysis, social_analysis, ai_report, first_message,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          leadData.name, leadData.segment, leadData.phone, leadData.whatsapp, leadData.email,
-          leadData.website, leadData.instagram, leadData.facebook, leadData.city, leadData.state,
-          leadData.address, leadData.rating, leadData.reviews_count, leadData.followers,
-          leadData.description, leadData.category, leadData.gmaps_link, leadData.instagram_link,
-          leadData.status, leadData.opportunity_score, leadData.has_website,
-          leadData.website_analysis, leadData.social_analysis, leadData.ai_report, leadData.first_message,
-          leadData.created_at, leadData.updated_at
-        ]
-      );
-
-      leadData.id = insertResult.id;
+      // Save to database using dbService
+      const leadId = await dbService.leads.createLead(leadData);
+      leadData.id = leadId;
       
       // Auto schedule follow-up messages
       await scheduleFollowUpsForLead(leadData.id, leadData.name, '');
@@ -183,39 +149,24 @@ router.post('/leads/search', async (req, res) => {
 
 // 3. Leads listing with filters
 router.get('/leads', async (req, res) => {
-  const { city, segment, status, has_website, min_score, query } = req.query;
-  let sql = 'SELECT * FROM leads WHERE 1=1';
-  const params = [];
-
-  if (city) {
-    sql += ' AND city LIKE ?';
-    params.push(`%${city}%`);
-  }
-  if (segment) {
-    sql += ' AND segment LIKE ?';
-    params.push(`%${segment}%`);
-  }
-  if (status) {
-    sql += ' AND status = ?';
-    params.push(status);
-  }
-  if (has_website !== undefined && has_website !== '') {
-    sql += ' AND has_website = ?';
-    params.push(parseInt(has_website));
-  }
-  if (min_score) {
-    sql += ' AND opportunity_score >= ?';
-    params.push(parseInt(min_score));
-  }
-  if (query) {
-    sql += ' AND (name LIKE ? OR description LIKE ?)';
-    params.push(`%${query}%`, `%${query}%`);
-  }
-
-  sql += ' ORDER BY opportunity_score DESC, id DESC';
-
   try {
-    const leads = await dbAll(sql, params);
+    const filters = {
+      city: req.query.city,
+      state: req.query.state,
+      segment: req.query.segment,
+      status: req.query.status,
+      has_website: req.query.has_website,
+      min_score: req.query.min_score,
+      query: req.query.query,
+      instagram: req.query.instagram,
+      facebook: req.query.facebook,
+      whatsapp: req.query.whatsapp,
+      phone: req.query.phone,
+      min_rating: req.query.min_rating,
+      min_reviews: req.query.min_reviews
+    };
+
+    const leads = await dbService.leads.searchLeads(filters);
     res.json(leads);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -225,23 +176,11 @@ router.get('/leads', async (req, res) => {
 // 4. Lead details
 router.get('/leads/:id', async (req, res) => {
   try {
-    const lead = await dbGet('SELECT * FROM leads WHERE id = ?', [req.params.id]);
+    const lead = await dbService.leads.getLeadById(req.params.id);
     if (!lead) {
       return res.status(404).json({ error: 'Lead não encontrado' });
     }
-
-    // Load follow-ups
-    const followUps = await dbAll(
-      "SELECT * FROM follow_ups WHERE lead_id = ? ORDER BY sequence_day ASC", 
-      [req.params.id]
-    );
-
-    res.json({
-      ...lead,
-      website_analysis: JSON.parse(lead.website_analysis || '{}'),
-      social_analysis: JSON.parse(lead.social_analysis || '{}'),
-      followUps
-    });
+    res.json(lead);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -255,45 +194,60 @@ router.put('/leads/:id/status', async (req, res) => {
   }
 
   try {
-    const now = new Date().toISOString();
-    await dbRun(
-      'UPDATE leads SET status = ?, updated_at = ? WHERE id = ?',
-      [status, now, req.params.id]
-    );
+    await dbService.leads.updateLeadStatus(req.params.id, status);
     res.json({ success: true, message: 'Status atualizado com sucesso' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 6. Delete a lead
+// 6. Update complete CRM lead details
+router.put('/leads/:id/crm', async (req, res) => {
+  const { 
+    owner, value_negotiated, next_action, notes, status,
+    first_contact_date, last_contact_date, history, proposal_text, proposal_sent 
+  } = req.body;
+
+  try {
+    await dbService.leads.updateLeadCrm(req.params.id, {
+      owner,
+      value_negotiated: parseFloat(value_negotiated || 0),
+      next_action,
+      notes,
+      status,
+      first_contact_date,
+      last_contact_date,
+      history,
+      proposal_text,
+      proposal_sent
+    });
+    res.json({ success: true, message: 'Dados do CRM atualizados com sucesso' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. Delete a lead
 router.delete('/leads/:id', async (req, res) => {
   try {
-    await dbRun('DELETE FROM leads WHERE id = ?', [req.params.id]);
-    await dbRun('DELETE FROM follow_ups WHERE lead_id = ?', [req.params.id]);
+    await dbService.leads.deleteLead(req.params.id);
     res.json({ success: true, message: 'Lead deletado com sucesso' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 7. Regenerate prospecting message
+// 8. Regenerate prospecting message
 router.post('/leads/:id/generate-message', async (req, res) => {
   try {
-    const lead = await dbGet('SELECT * FROM leads WHERE id = ?', [req.params.id]);
+    const lead = await dbService.leads.getLeadById(req.params.id);
     if (!lead) {
       return res.status(404).json({ error: 'Lead não encontrado' });
     }
 
-    const websiteAnalysis = JSON.parse(lead.website_analysis || '{}');
-    const socialAnalysis = JSON.parse(lead.social_analysis || '{}');
+    const result = await generateAiReport(lead, lead.website_analysis, lead.social_analysis);
 
-    const result = await generateAiReport(lead, websiteAnalysis, socialAnalysis);
-
-    await dbRun(
-      'UPDATE leads SET first_message = ?, ai_report = ?, updated_at = ? WHERE id = ?',
-      [result.firstMessage, result.aiReport, new Date().toISOString(), req.params.id]
-    );
+    await dbService.leads.updateLeadAi(req.params.id, result.firstMessage, result.aiReport);
 
     res.json({ first_message: result.firstMessage, ai_report: result.aiReport });
   } catch (err) {
@@ -301,7 +255,7 @@ router.post('/leads/:id/generate-message', async (req, res) => {
   }
 });
 
-// 8. Generate proposal
+// 9. Generate proposal
 router.post('/leads/:id/proposal', async (req, res) => {
   const { services } = req.body;
   if (!services || !Array.isArray(services)) {
@@ -309,40 +263,81 @@ router.post('/leads/:id/proposal', async (req, res) => {
   }
 
   try {
-    const lead = await dbGet('SELECT * FROM leads WHERE id = ?', [req.params.id]);
+    const lead = await dbService.leads.getLeadById(req.params.id);
     if (!lead) {
       return res.status(404).json({ error: 'Lead não encontrado' });
     }
 
     const proposalMarkdown = await generateProposalText(lead, services);
+    
+    // Save to CRM database
+    const now = new Date().toISOString();
+    const historyEntry = {
+      date: now,
+      type: 'proposal_sent',
+      description: `Proposta gerada para serviços: ${services.join(', ')}`
+    };
+    const updatedHistory = Array.isArray(lead.history) ? [...lead.history, historyEntry] : [historyEntry];
+
+    await dbService.leads.updateLeadCrm(req.params.id, {
+      owner: lead.owner || '',
+      value_negotiated: lead.value_negotiated || 0,
+      next_action: lead.next_action || '',
+      notes: lead.notes || '',
+      status: 'Proposta enviada', // Update status to proposal sent
+      first_contact_date: lead.first_contact_date || now,
+      last_contact_date: now,
+      history: updatedHistory,
+      proposal_text: proposalMarkdown,
+      proposal_sent: 1
+    });
+
     res.json({ proposal: proposalMarkdown });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 9. Send message / Trigger webhook
+// 10. Send message / Trigger webhook
 router.post('/leads/:id/send-message', async (req, res) => {
   const { message, channel } = req.body; // channel: 'whatsapp', 'email', 'instagram'
   
   try {
-    const lead = await dbGet('SELECT * FROM leads WHERE id = ?', [req.params.id]);
+    const lead = await dbService.leads.getLeadById(req.params.id);
     if (!lead) {
       return res.status(404).json({ error: 'Lead não encontrado' });
     }
 
     console.log(`[API] Enviando mensagem via ${channel} para ${lead.name}...`);
     
-    // Simulate sending, save interaction logs if needed
     const now = new Date().toISOString();
-    await dbRun(
-      "UPDATE leads SET status = 'Mensagem enviada', updated_at = ? WHERE id = ?",
-      [now, req.params.id]
-    );
+    const firstContactDate = lead.first_contact_date || now;
+    const lastContactDate = now;
+    
+    // Add interaction to history
+    const historyEntry = {
+      date: now,
+      type: 'message_sent',
+      channel: channel,
+      description: `Mensagem enviada via ${channel}: "${message.substring(0, 60)}${message.length > 60 ? '...' : ''}"`
+    };
+    const updatedHistory = Array.isArray(lead.history) ? [...lead.history, historyEntry] : [historyEntry];
+
+    await dbService.leads.updateLeadCrm(req.params.id, {
+      owner: lead.owner || '',
+      value_negotiated: lead.value_negotiated || 0,
+      next_action: lead.next_action || '',
+      notes: lead.notes || '',
+      status: 'Mensagem enviada',
+      first_contact_date: firstContactDate,
+      last_contact_date: lastContactDate,
+      history: updatedHistory,
+      proposal_text: lead.proposal_text || '',
+      proposal_sent: lead.proposal_sent || 0
+    });
 
     // Call settings webhook if present
-    const webhookSetting = await dbGet('SELECT value FROM settings WHERE key = ?', [`${channel}_webhook_url`]);
-    const webhookUrl = webhookSetting?.value;
+    const webhookUrl = await dbService.settings.getSettingByKey(`${channel}_webhook_url`);
     
     if (webhookUrl && webhookUrl.trim() !== '') {
       fetch(webhookUrl, {
@@ -362,7 +357,7 @@ router.post('/leads/:id/send-message', async (req, res) => {
   }
 });
 
-// 10. Chat with lead AI
+// 11. Chat with lead AI
 router.post('/leads/:id/chat', async (req, res) => {
   const { message, history } = req.body;
   if (!message) {
@@ -370,7 +365,7 @@ router.post('/leads/:id/chat', async (req, res) => {
   }
 
   try {
-    const lead = await dbGet('SELECT * FROM leads WHERE id = ?', [req.params.id]);
+    const lead = await dbService.leads.getLeadById(req.params.id);
     if (!lead) {
       return res.status(404).json({ error: 'Lead não encontrado' });
     }
@@ -382,7 +377,7 @@ router.post('/leads/:id/chat', async (req, res) => {
   }
 });
 
-// 11. Trigger manual follow-up processing
+// 12. Trigger manual follow-up processing
 router.post('/automation/trigger', async (req, res) => {
   try {
     await processPendingFollowUps();
@@ -392,15 +387,11 @@ router.post('/automation/trigger', async (req, res) => {
   }
 });
 
-// 12. Settings Endpoints
+// 13. Settings Endpoints
 router.get('/settings', async (req, res) => {
   try {
-    const rows = await dbAll('SELECT key, value FROM settings');
-    const settingsObj = {};
-    rows.forEach(r => {
-      settingsObj[r.key] = r.value;
-    });
-    res.json(settingsObj);
+    const settings = await dbService.settings.getSettings();
+    res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -409,12 +400,7 @@ router.get('/settings', async (req, res) => {
 router.post('/settings', async (req, res) => {
   const settingsObj = req.body;
   try {
-    for (const [key, value] of Object.entries(settingsObj)) {
-      await dbRun(
-        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-        [key, String(value)]
-      );
-    }
+    await dbService.settings.saveSettings(settingsObj);
     res.json({ success: true, message: 'Configurações salvas com sucesso!' });
   } catch (err) {
     res.status(500).json({ error: err.message });

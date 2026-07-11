@@ -1,4 +1,4 @@
-import { dbAll, dbRun } from '../db.js';
+import { dbService } from './dbService.js';
 
 // Checks and executes due follow-up messages
 export const processPendingFollowUps = async () => {
@@ -7,13 +7,7 @@ export const processPendingFollowUps = async () => {
   
   try {
     // Find all scheduled follow-ups that are past their time and still in 'Agendado' status
-    const pending = await dbAll(
-      `SELECT f.*, l.name as lead_name, l.phone, l.whatsapp, l.status as lead_status 
-       FROM follow_ups f
-       JOIN leads l ON f.lead_id = l.id
-       WHERE f.status = 'Agendado' AND f.scheduled_for <= ?`,
-       [now]
-    );
+    const pending = await dbService.followUps.getPendingFollowUps(now);
 
     console.log(`[Automation Engine] Encontrados ${pending.length} follow-ups prontos para envio.`);
     
@@ -21,22 +15,15 @@ export const processPendingFollowUps = async () => {
       console.log(`[Automation Engine] Enviando mensagem de D+${item.sequence_day} para ${item.lead_name} (${item.whatsapp || item.phone})`);
       
       // Update follow_up status
-      await dbRun(
-        `UPDATE follow_ups SET status = 'Enviado', sent_at = ? WHERE id = ?`,
-        [now, item.id]
-      );
+      await dbService.followUps.updateFollowUpStatus(item.id, 'Enviado', now);
       
       // Update lead status to 'Mensagem enviada' if it was in 'Entrar em contato' or 'Novo Lead'
       if (item.lead_status === 'Novo Lead' || item.lead_status === 'Entrar em contato') {
-        await dbRun(
-          `UPDATE leads SET status = 'Mensagem enviada', updated_at = ? WHERE id = ?`,
-          [now, item.lead_id]
-        );
+        await dbService.leads.updateLeadStatus(item.lead_id, 'Mensagem enviada');
       }
 
       // Here you would fire webhooks/integrations (WhatsApp/Email)
-      const whatsappWebhook = await dbAll("SELECT value FROM settings WHERE key = 'whatsapp_webhook_url'");
-      const webhookUrl = whatsappWebhook[0]?.value;
+      const webhookUrl = await dbService.settings.getSettingByKey('whatsapp_webhook_url');
       if (webhookUrl && webhookUrl.trim() !== '') {
         try {
           console.log(`[Automation Webhook] Disparando gatilho de WhatsApp para webhook: ${webhookUrl}`);

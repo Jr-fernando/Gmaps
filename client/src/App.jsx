@@ -7,7 +7,7 @@ import DashboardView from './components/DashboardView';
 import SearchView from './components/SearchView';
 import CRMBoardView from './components/CRMBoardView';
 import SettingsView from './components/SettingsView';
-import LeadDetailPanel from './components/LeadDetailPanel';
+import CompanyDetailsView from './components/CompanyDetailsView';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -33,6 +33,9 @@ export default function App() {
   };
 
   const getViewTitle = () => {
+    if (selectedLeadId) {
+      return 'Perfil Detalhado da Empresa';
+    }
     switch (currentView) {
       case 'dashboard': return 'Painel de Controle';
       case 'search': return 'Busca Ativa de Empresas';
@@ -56,8 +59,11 @@ export default function App() {
         <ul className="nav-links">
           <li>
             <a 
-              className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
-              onClick={() => setCurrentView('dashboard')}
+              className={`nav-item ${currentView === 'dashboard' && !selectedLeadId ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedLeadId(null);
+                setCurrentView('dashboard');
+              }}
             >
               <LayoutDashboard size={18} />
               Painel
@@ -65,8 +71,11 @@ export default function App() {
           </li>
           <li>
             <a 
-              className={`nav-item ${currentView === 'search' ? 'active' : ''}`}
-              onClick={() => setCurrentView('search')}
+              className={`nav-item ${currentView === 'search' && !selectedLeadId ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedLeadId(null);
+                setCurrentView('search');
+              }}
             >
               <Search size={18} />
               Busca Ativa
@@ -74,8 +83,11 @@ export default function App() {
           </li>
           <li>
             <a 
-              className={`nav-item ${currentView === 'crm' ? 'active' : ''}`}
-              onClick={() => setCurrentView('crm')}
+              className={`nav-item ${currentView === 'crm' && !selectedLeadId ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedLeadId(null);
+                setCurrentView('crm');
+              }}
             >
               <Kanban size={18} />
               CRM Kanban
@@ -83,8 +95,11 @@ export default function App() {
           </li>
           <li>
             <a 
-              className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
-              onClick={() => setCurrentView('settings')}
+              className={`nav-item ${currentView === 'settings' && !selectedLeadId ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedLeadId(null);
+                setCurrentView('settings');
+              }}
             >
               <Settings size={18} />
               Configurações
@@ -119,25 +134,26 @@ export default function App() {
 
         {/* Content Render Area */}
         <div className="content-wrapper">
-          {currentView === 'dashboard' && <DashboardView />}
-          {currentView === 'search' && <SearchView onSearchComplete={() => setRefreshTrigger(prev => prev + 1)} />}
-          {currentView === 'crm' && (
-            <CRMBoardView 
-              onSelectLead={(id) => setSelectedLeadId(id)} 
-              refreshTrigger={refreshTrigger}
+          {selectedLeadId ? (
+            <CompanyDetailsView 
+              leadId={selectedLeadId}
+              onBack={() => setSelectedLeadId(null)}
+              onLeadUpdated={() => setRefreshTrigger(prev => prev + 1)}
             />
+          ) : (
+            <>
+              {currentView === 'dashboard' && <DashboardView />}
+              {currentView === 'search' && <SearchView onSearchComplete={() => setRefreshTrigger(prev => prev + 1)} />}
+              {currentView === 'crm' && (
+                <CRMBoardView 
+                  onSelectLead={(id) => setSelectedLeadId(id)} 
+                  refreshTrigger={refreshTrigger}
+                />
+              )}
+              {currentView === 'settings' && <SettingsView />}
+            </>
           )}
-          {currentView === 'settings' && <SettingsView />}
         </div>
-
-        {/* Lead Drawer Details Panel */}
-        {selectedLeadId && (
-          <LeadDetailPanel 
-            leadId={selectedLeadId}
-            onClose={() => setSelectedLeadId(null)}
-            onLeadUpdated={() => setRefreshTrigger(prev => prev + 1)}
-          />
-        )}
       </main>
     </div>
   );

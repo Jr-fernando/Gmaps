@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, Database, Award, CheckCircle, Globe, Instagram, ShieldAlert } from 'lucide-react';
+import { Search, MapPin, Database, Award, CheckCircle, Globe, Instagram, ShieldAlert, Sparkles, Filter } from 'lucide-react';
 
 const MOCK_LOGS = [
-  'Conectando aos motores de busca...',
+  'Conectando aos motores de busca locais...',
   'Pesquisando estabelecimentos no Google Maps...',
   'Filtrando empresas na região selecionada...',
   'Coletando informações de contato (Telefone, Redes Sociais, Site)...',
@@ -11,7 +11,7 @@ const MOCK_LOGS = [
   'Auditando perfil de Instagram (frequência de postagem, links de bio)...',
   'IA gerando relatório de oportunidade e prospecção personalizado...',
   'Formatando relatórios técnicos e agendando sequência de follow-ups...',
-  'Armazenando leads estruturados no banco de dados SQLite...',
+  'Armazenando leads estruturados no banco de dados SQLite/Supabase...',
   'Processo concluído com sucesso!'
 ];
 
@@ -69,7 +69,11 @@ export default function SearchView({ onSearchComplete }) {
       
       // Stop logger and flush rest of the logs
       clearInterval(logIntervalRef.current);
-      setLogs(prev => [...prev, ...MOCK_LOGS.slice(logIndexRef.current), `Sucesso: ${data.leads?.length || 0} novos leads adicionados!`]);
+      setLogs(prev => [
+        ...prev, 
+        ...MOCK_LOGS.slice(logIndexRef.current), 
+        `Sucesso: ${data.leads?.length || 0} novos leads adicionados com análise inteligente!`
+      ]);
       
       setFoundLeads(data.leads || []);
       setSearchDone(true);
@@ -94,24 +98,30 @@ export default function SearchView({ onSearchComplete }) {
   }, []);
 
   return (
-    <div className="search-box-wrapper">
+    <div className="search-box-wrapper animate-fade-in">
       <div className="search-title-desc">
-        <h2>Busca Inteligente de Leads</h2>
-        <p>Preencha os termos de busca para encontrar empresas locais, auditar sua presença digital e cadastrá-las no CRM com relatórios de IA.</p>
+        <h2 style={{ fontFamily: 'var(--font-heading)', color: '#fff', fontSize: '1.5rem', fontWeight: 800, marginBottom: '6px' }}>
+          Busca Inteligente de Leads (Scraper Local)
+        </h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          Rastreie empresas locais no Google Maps e redes sociais, auditando a presença web e gerando diagnósticos comerciais automáticos usando inteligência artificial.
+        </p>
       </div>
 
-      <div className="glass-card" style={{ marginBottom: '24px' }}>
+      <div className="glass-card" style={{ marginBottom: '24px', padding: '24px' }}>
         <form onSubmit={handleSearch}>
-          <div className="search-form-row">
+          <div className="search-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '16px', alignItems: 'end', marginBottom: '20px' }}>
             <div className="input-group">
-              <label className="input-label">O que você está procurando? (Segmento)</label>
+              <label className="input-label" style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>
+                O que você está procurando? (Segmento/Nicho)
+              </label>
               <div style={{ position: 'relative' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '16px', color: 'var(--text-muted)' }} />
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '15px', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
-                  placeholder="Ex: Padaria, Clinica Odontológica, Oficina"
+                  placeholder="Ex: Padaria, Clínica Odontológica, Oficina Mecânica"
                   className="input-field"
-                  style={{ paddingLeft: '38px', width: '100%' }}
+                  style={{ paddingLeft: '38px', width: '100%', borderRadius: '8px' }}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   required
@@ -121,14 +131,16 @@ export default function SearchView({ onSearchComplete }) {
             </div>
 
             <div className="input-group">
-              <label className="input-label">Em qual cidade? (Localidade)</label>
+              <label className="input-label" style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>
+                Em qual cidade? (Localidade)
+              </label>
               <div style={{ position: 'relative' }}>
-                <MapPin size={16} style={{ position: 'absolute', left: '12px', top: '16px', color: 'var(--text-muted)' }} />
+                <MapPin size={16} style={{ position: 'absolute', left: '12px', top: '15px', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
-                  placeholder="Ex: São Paulo, Belo Horizonte"
+                  placeholder="Ex: São Paulo, Rio de Janeiro"
                   className="input-field"
-                  style={{ paddingLeft: '38px', width: '100%' }}
+                  style={{ paddingLeft: '38px', width: '100%', borderRadius: '8px' }}
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
                   required
@@ -137,50 +149,54 @@ export default function SearchView({ onSearchComplete }) {
               </div>
             </div>
 
-            <button type="submit" className="btn-search" disabled={loading || !query.trim() || !city.trim()}>
-              <Database size={18} />
-              {loading ? 'Pesquisando...' : 'Pesquisar Empresas'}
+            <button type="submit" className="btn-search" style={{ padding: '14px 24px', borderRadius: '8px', height: '46px' }} disabled={loading || !query.trim() || !city.trim()}>
+              <Database size={16} />
+              {loading ? 'Prospectando...' : 'Iniciar Prospecção'}
             </button>
           </div>
 
-          <label className="input-label" style={{ marginBottom: '8px', display: 'block' }}>Fontes de Prospecção</label>
-          <div className="sources-grid">
-            <div className={`source-checkbox-label ${sources.gmaps ? 'checked' : ''}`} onClick={() => !loading && toggleSource('gmaps')}>
+          <label className="input-label" style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>
+            Canais de Rastreamento de Contatos
+          </label>
+          <div className="sources-grid" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div className={`source-checkbox-label ${sources.gmaps ? 'checked' : ''}`} onClick={() => !loading && toggleSource('gmaps')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input type="checkbox" checked={sources.gmaps} onChange={() => {}} style={{ display: 'none' }} />
               Google Maps
             </div>
-            <div className={`source-checkbox-label ${sources.instagram ? 'checked' : ''}`} onClick={() => !loading && toggleSource('instagram')}>
-              <input type="checkbox" checked={sources.instagram} onChange={() => {}} style={{ display: 'none' }} />
-              Instagram
-            </div>
-            <div className={`source-checkbox-label ${sources.gmybusiness ? 'checked' : ''}`} onClick={() => !loading && toggleSource('gmybusiness')}>
+            <div className={`source-checkbox-label ${sources.gmybusiness ? 'checked' : ''}`} onClick={() => !loading && toggleSource('gmybusiness')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input type="checkbox" checked={sources.gmybusiness} onChange={() => {}} style={{ display: 'none' }} />
               Google Meu Negócio
             </div>
-            <div className={`source-checkbox-label ${sources.facebook ? 'checked' : ''}`} onClick={() => !loading && toggleSource('facebook')}>
-              <input type="checkbox" checked={sources.facebook} onChange={() => {}} style={{ display: 'none' }} />
-              Facebook
+            <div className={`source-checkbox-label ${sources.instagram ? 'checked' : ''}`} onClick={() => !loading && toggleSource('instagram')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input type="checkbox" checked={sources.instagram} onChange={() => {}} style={{ display: 'none' }} />
+              Instagram Bio
             </div>
-            <div className={`source-checkbox-label ${sources.linkedin ? 'checked' : ''}`} onClick={() => !loading && toggleSource('linkedin')}>
+            <div className={`source-checkbox-label ${sources.facebook ? 'checked' : ''}`} onClick={() => !loading && toggleSource('facebook')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input type="checkbox" checked={sources.facebook} onChange={() => {}} style={{ display: 'none' }} />
+              Facebook Page
+            </div>
+            <div className={`source-checkbox-label ${sources.linkedin ? 'checked' : ''}`} onClick={() => !loading && toggleSource('linkedin')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input type="checkbox" checked={sources.linkedin} onChange={() => {}} style={{ display: 'none' }} />
-              LinkedIn
+              LinkedIn Company
             </div>
           </div>
         </form>
 
-        {/* Searching Status Area */}
+        {/* Searching Status Log Window */}
         {loading && (
-          <div className="search-status-box">
-            <div className="loader-spinner"></div>
-            <h4 style={{ fontFamily: 'var(--font-heading)', color: '#fff', marginBottom: '8px' }}>
-              Buscando e Auditando Empresas...
-            </h4>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              A IA está rastreando sites e redes sociais para calcular o score de oportunidade.
+          <div className="search-status-box" style={{ marginTop: '24px', padding: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <div className="loader-spinner" style={{ width: '16px', height: '16px', borderThickness: '2px', margin: 0 }}></div>
+              <h4 style={{ fontFamily: 'var(--font-heading)', color: '#fff', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                Robô de Prospecção Ativo
+              </h4>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+              Aguarde enquanto a IA executa varreduras de SEO, responsividade de layouts e frequência de posts sociais.
             </p>
-            <div className="search-logs">
+            <div className="search-logs" style={{ maxHeight: '150px', overflowY: 'auto', padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.02)', borderRadius: '6px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--color-success)', lineHeight: '1.5' }}>
               {logs.map((log, index) => (
-                <div key={index} style={{ marginBottom: '4px' }}>
+                <div key={index} style={{ marginBottom: '2px' }}>
                   {`> ${log}`}
                 </div>
               ))}
@@ -192,10 +208,10 @@ export default function SearchView({ onSearchComplete }) {
 
       {/* Search results after success */}
       {searchDone && !loading && (
-        <div>
-          <h3 className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="animate-fade-in">
+          <h3 className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', color: '#fff', marginBottom: '16px' }}>
             <CheckCircle size={18} style={{ color: 'var(--color-success)' }} />
-            Resultado da Pesquisa ({foundLeads.length} leads adicionados)
+            Resultado da Captura ({foundLeads.length} leads adicionados)
           </h3>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -203,7 +219,7 @@ export default function SearchView({ onSearchComplete }) {
               foundLeads.map((lead, index) => (
                 <div className="glass-card" key={index} style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <h4 style={{ fontWeight: '600', color: '#fff', fontSize: '0.95rem' }}>{lead.name}</h4>
+                    <h4 style={{ fontWeight: '700', color: '#fff', fontSize: '0.95rem' }}>{lead.name}</h4>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{lead.segment} • {lead.city}/{lead.state}</span>
                   </div>
                   

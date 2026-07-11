@@ -84,10 +84,54 @@ export const initDb = async () => {
       social_analysis TEXT,  -- Store JSON
       ai_report TEXT,
       first_message TEXT,
+      owner TEXT,
+      value_negotiated REAL DEFAULT 0,
+      next_action TEXT,
+      notes TEXT,
+      latitude REAL,
+      longitude REAL,
+      schedule TEXT,
+      reviews TEXT, -- JSON
+      gallery TEXT, -- JSON
+      first_contact_date TEXT,
+      last_contact_date TEXT,
+      history TEXT, -- JSON
+      proposal_text TEXT,
+      proposal_sent INTEGER DEFAULT 0,
       created_at TEXT,
-      updated_at TEXT
+      updated_at TEXT,
+      UNIQUE(name, city)
     )
   `);
+
+  // Migrate columns dynamically for older databases
+  const addColumnSafe = async (columnName, definition) => {
+    try {
+      await dbRun(`ALTER TABLE leads ADD COLUMN ${columnName} ${definition}`);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
+  };
+  await addColumnSafe('owner', 'TEXT');
+  await addColumnSafe('value_negotiated', 'REAL DEFAULT 0');
+  await addColumnSafe('next_action', 'TEXT');
+  await addColumnSafe('notes', 'TEXT');
+  await addColumnSafe('latitude', 'REAL');
+  await addColumnSafe('longitude', 'REAL');
+  await addColumnSafe('schedule', 'TEXT');
+  await addColumnSafe('reviews', 'TEXT');
+  await addColumnSafe('gallery', 'TEXT');
+  await addColumnSafe('first_contact_date', 'TEXT');
+  await addColumnSafe('last_contact_date', 'TEXT');
+  await addColumnSafe('history', 'TEXT');
+  await addColumnSafe('proposal_text', 'TEXT');
+  await addColumnSafe('proposal_sent', 'INTEGER DEFAULT 0');
+
+  try {
+    await dbRun(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_name_city ON leads(name, city)`);
+  } catch (e) {
+    // Ignore index creation error
+  }
 
   // Follow-ups table
   await dbRun(`
