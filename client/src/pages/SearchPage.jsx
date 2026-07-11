@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, MapPin, Database, CheckCircle, Globe, Instagram, Mail, Phone, 
-  ShieldAlert, Star, Clock, Copy, Check, Eye, ChevronRight
+  ShieldAlert, Star, Clock, Copy, Check, Eye, ChevronRight, AlertCircle, HelpCircle
 } from 'lucide-react';
 
 const MOCK_LOGS = [
@@ -21,26 +21,43 @@ const MOCK_LOGS = [
 export default function SearchPage({ onSearchComplete, onSelectLead }) {
   const [query, setQuery] = useState('');
   const [city, setCity] = useState('');
-  const [sources, setSources] = useState({
-    gmaps: true,
-    instagram: true,
-    facebook: false,
-    linkedin: false,
-    gmybusiness: true
-  });
+  
+  // Advanced filters state
+  const [filterRadius, setFilterRadius] = useState('');
+  const [filterMinReviews, setFilterMinReviews] = useState('');
+  const [filterRatingRange, setFilterRatingRange] = useState('');
+  const [filterOpportunity, setFilterOpportunity] = useState('');
+  const [filterNoWebsite, setFilterNoWebsite] = useState(false);
+  const [filterNoInstagram, setFilterNoInstagram] = useState(false);
+  const [filterNoFacebook, setFilterNoFacebook] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState([]);
   const [foundLeads, setFoundLeads] = useState([]);
   const [searchDone, setSearchDone] = useState(false);
   const [copiedKey, setCopiedKey] = useState('');
   
+  // Google Places Key Configuration State
+  const [isPlacesKeyConfigured, setIsPlacesKeyConfigured] = useState(true);
+  const [showKeyHelp, setShowKeyHelp] = useState(false);
+
   const logsEndRef = useRef(null);
   const logIndexRef = useRef(0);
   const logIntervalRef = useRef(null);
 
-  const toggleSource = (key) => {
-    setSources(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+  // Fetch settings to check if Places API is configured
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.google_places_api_key || data.google_places_api_key.trim() === '') {
+          setIsPlacesKeyConfigured(false);
+        } else {
+          setIsPlacesKeyConfigured(true);
+        }
+      })
+      .catch(() => setIsPlacesKeyConfigured(false));
+  }, []);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -60,7 +77,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
       } else {
         clearInterval(logIntervalRef.current);
       }
-    }, 1200);
+    }, 1000);
 
     try {
       const response = await fetch('/api/leads/search', {
@@ -79,7 +96,30 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         `Sucesso: ${data.leads?.length || 0} novos leads adicionados com análise inteligente!`
       ]);
       
-      setFoundLeads(data.leads || []);
+      // Apply advanced local filters on scraped results
+      let filtered = data.leads || [];
+      
+      if (filterMinReviews) {
+        filtered = filtered.filter(l => l.reviews_count >= parseInt(filterMinReviews));
+      }
+      if (filterRatingRange) {
+        if (filterRatingRange === 'low') filtered = filtered.filter(l => l.rating < 4.0);
+        if (filterRatingRange === 'high') filtered = filtered.filter(l => l.rating >= 4.5);
+      }
+      if (filterOpportunity) {
+        filtered = filtered.filter(l => l.opportunity_score >= parseInt(filterOpportunity));
+      }
+      if (filterNoWebsite) {
+        filtered = filtered.filter(l => l.has_website === 0 || !l.website);
+      }
+      if (filterNoInstagram) {
+        filtered = filtered.filter(l => !l.instagram);
+      }
+      if (filterNoFacebook) {
+        filtered = filtered.filter(l => !l.facebook);
+      }
+
+      setFoundLeads(filtered);
       setSearchDone(true);
       if (onSearchComplete) onSearchComplete();
     } catch (err) {
@@ -97,7 +137,6 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   };
 
   useEffect(() => {
-    // Auto-scroll logs to bottom
     if (logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -118,6 +157,39 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         </p>
       </div>
 
+      {/* Google Places Key Callout Alert */}
+      {!isPlacesKeyConfigured && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '16px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', marginBottom: '20px', color: 'var(--color-warning)', fontSize: '0.85rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+            <AlertCircle size={18} />
+            <span>Modo de Simulação Ativo (Places API Key Ausente)</span>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.8rem' }}>
+            A Google Places API Key não está cadastrada em Configurações. O robô irá gerar simulações completas e detalhadas baseadas em bairros e cidades reais de empresas locais para demonstração de prospecção.
+          </p>
+          <button 
+            type="button" 
+            onClick={() => setShowKeyHelp(!showKeyHelp)}
+            style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--accent-primary)', textDecoration: 'underline', padding: 0, cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <HelpCircle size={12} /> {showKeyHelp ? 'Esconder ajuda' : 'Como configurar a chave real?'}
+          </button>
+
+          {showKeyHelp && (
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '6px', marginTop: '6px', color: 'var(--text-secondary)', fontSize: '0.78rem', lineHeight: '1.5' }}>
+              <strong>Passo a passo para chave oficial:</strong>
+              <ol style={{ paddingLeft: '20px', margin: '4px 0 0 0' }}>
+                <li>Acesse o console de desenvolvedores do Google Cloud.</li>
+                <li>Habilite as bibliotecas <strong>Places API</strong> e <strong>Maps JavaScript API</strong>.</li>
+                <li>Crie uma credencial de chave de API.</li>
+                <li>Insira a chave na aba de <strong>Configurações</strong> deste painel para iniciar a captura de dados de empresas reais do Google Maps.</li>
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main Search Panel */}
       <div className="glass-card" style={{ marginBottom: '24px', padding: '24px' }}>
         <form onSubmit={handleSearch}>
           <div className="search-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '16px', alignItems: 'end', marginBottom: '20px' }}>
@@ -165,24 +237,70 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
             </button>
           </div>
 
-          <label className="input-label" style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>
-            Canais de Rastreamento de Contatos
-          </label>
-          <div className="sources-grid" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <div className={`source-checkbox-label ${sources.gmaps ? 'checked' : ''}`} onClick={() => !loading && toggleSource('gmaps')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Google Maps
+          {/* Advanced Prospecting Filters Accordion */}
+          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '16px' }}>
+            <span style={{ fontWeight: '700', fontSize: '0.8rem', color: 'var(--text-primary)', display: 'block', marginBottom: '10px' }}>
+              Filtros Avançados de Qualificação
+            </span>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+              {/* Raio em KM */}
+              <div className="input-group">
+                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Raio de Prospecção (KM)</label>
+                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterRadius} onChange={(e) => setFilterRadius(e.target.value)}>
+                  <option value="">Todo o município</option>
+                  <option value="5">Até 5 KM do centro</option>
+                  <option value="15">Até 15 KM do centro</option>
+                  <option value="30">Até 30 KM do centro</option>
+                </select>
+              </div>
+
+              {/* Avaliações Mínimas */}
+              <div className="input-group">
+                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Volume Mínimo de Opiniões</label>
+                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterMinReviews} onChange={(e) => setFilterMinReviews(e.target.value)}>
+                  <option value="">Qualquer volume</option>
+                  <option value="50">Mais de 50 opiniões</option>
+                  <option value="15">Mais de 15 opiniões</option>
+                  <option value="5">Mais de 5 opiniões</option>
+                </select>
+              </div>
+
+              {/* Faixa de Avaliação */}
+              <div className="input-group">
+                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Faixa de Estrelas (Maps)</label>
+                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterRatingRange} onChange={(e) => setFilterRatingRange(e.target.value)}>
+                  <option value="">Todas as notas</option>
+                  <option value="low">Mal avaliadas (&lt; 4.0★)</option>
+                  <option value="high">Altamente avaliadas (&ge; 4.5★)</option>
+                </select>
+              </div>
+
+              {/* Oportunidade */}
+              <div className="input-group">
+                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Prioridade Comercial IA</label>
+                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterOpportunity} onChange={(e) => setFilterOpportunity(e.target.value)}>
+                  <option value="">Todos os scores</option>
+                  <option value="80">Alta Oportunidade (&ge;80)</option>
+                  <option value="50">Média Oportunidade (&ge;50)</option>
+                </select>
+              </div>
             </div>
-            <div className={`source-checkbox-label ${sources.gmybusiness ? 'checked' : ''}`} onClick={() => !loading && toggleSource('gmybusiness')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Google Meu Negócio
-            </div>
-            <div className={`source-checkbox-label ${sources.instagram ? 'checked' : ''}`} onClick={() => !loading && toggleSource('instagram')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Instagram Bio
-            </div>
-            <div className={`source-checkbox-label ${sources.facebook ? 'checked' : ''}`} onClick={() => !loading && toggleSource('facebook')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Facebook Page
-            </div>
-            <div className={`source-checkbox-label ${sources.linkedin ? 'checked' : ''}`} onClick={() => !loading && toggleSource('linkedin')} style={{ padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.8rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              LinkedIn Company
+
+            {/* Checkboxes presence */}
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={filterNoWebsite} onChange={(e) => setFilterNoWebsite(e.target.checked)} />
+                Filtrar empresas sem website
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={filterNoInstagram} onChange={(e) => setFilterNoInstagram(e.target.checked)} />
+                Filtrar sem perfil de Instagram
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={filterNoFacebook} onChange={(e) => setFilterNoFacebook(e.target.checked)} />
+                Filtrar sem página de Facebook
+              </label>
             </div>
           </div>
         </form>
@@ -216,7 +334,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         <div className="animate-fade-in">
           <h3 className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', color: '#fff', marginBottom: '16px' }}>
             <CheckCircle size={18} style={{ color: 'var(--color-success)' }} />
-            Resultado da Captura ({foundLeads.length} leads adicionados ao CRM)
+            Resultado da Captura ({foundLeads.length} leads qualificados adicionados ao CRM)
           </h3>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

@@ -126,6 +126,9 @@ export const initDb = async () => {
   await addColumnSafe('history', 'TEXT');
   await addColumnSafe('proposal_text', 'TEXT');
   await addColumnSafe('proposal_sent', 'INTEGER DEFAULT 0');
+  await addColumnSafe('labels', 'TEXT DEFAULT "[]"');
+  await addColumnSafe('probability', 'INTEGER DEFAULT 50');
+  await addColumnSafe('next_contact_date', 'TEXT');
 
   try {
     await dbRun(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_name_city ON leads(name, city)`);

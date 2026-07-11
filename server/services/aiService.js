@@ -87,7 +87,7 @@ A empresa **${lead.name}** demonstra excelente aceitação física no mercado lo
       firstContact: `Olá! Notei que a ${namePlaceholder} em ${lead.city} tem excelentes avaliações no Google (${lead.rating}★), mas não possui um site próprio. Hoje, isso faz com que clientes locais fechem com concorrentes que possuem site. Podemos falar 5 minutinhos para eu te mostrar como capturar esses clientes?`,
       secondContact: `Oi! Passando apenas para saber se conseguiu ler a mensagem anterior sobre a presença digital da ${namePlaceholder}. Preparei um diagnóstico visual rápido de como ficaria o layout do seu novo site. Posso te enviar por aqui?`,
       followUp: `Olá, tudo bem? Sei que a rotina na ${namePlaceholder} é corrida! Apenas para te lembrar que empresas em ${lead.city} que implementaram nosso sistema de Landing Page com Chatbot no WhatsApp viram um aumento de até 40% no agendamento. Podemos marcar um bate-papo rápido esta semana?`,
-      lastAttempt: `Olá, para não tomar muito seu tempo, esse será meu último contato. Se em algum momento quiser estruturar o site ou configurar automações para a ${namePlaceholder}, basta me chamar. Sucesso nos negócios!`
+      lastAttempt: `Olá, para não tomar muito seu tempo, esse será meu último contato. Se em algum momento quiser estruturar o site ou configure automações para a ${namePlaceholder}, basta me chamar. Sucesso nos negócios!`
     },
     email: {
       firstContact: `Assunto: Oportunidades de Presença Digital para a ${namePlaceholder}\n\nOlá,\n\nConheci o trabalho da ${namePlaceholder} em ${lead.city} e vi que vocês têm uma excelente avaliação de ${lead.rating} estrelas no Google Maps.\n\nNo entanto, notei que vocês ainda não possuem um site institucional ou Landing Page. No cenário atual, a ausência de um site próprio faz com que clientes locais que buscam por "${lead.segment}" acabem comprando de concorrentes.\n\nNós desenvolvemos sites modernos, ultra-rápidos e integrados com chatbots no WhatsApp para automatizar os agendamentos.\n\nGostaria de receber um diagnóstico de presença digital gratuito da ${namePlaceholder}?\n\nAtenciosamente,\nAgência de Prospecção Digital`,
@@ -100,6 +100,12 @@ A empresa **${lead.name}** demonstra excelente aceitação física no mercado lo
       secondContact: `Oi! Conseguiram ver o direct anterior sobre o link de contato na bio? É uma alteração simples que aumenta muito os agendamentos! Se quiser, posso mandar um exemplo de fluxo de atendimento.`,
       followUp: `Olá! Passando para saber se teriam interesse em criar uma Landing Page moderna para a ${namePlaceholder}. Nosso design se adapta ao celular e transforma seguidores do Instagram em clientes reais. Podemos conversar?`,
       lastAttempt: `Olá! Deixo as portas abertas caso queiram estruturar a presença digital e automatizar o atendimento da ${namePlaceholder} no futuro. Desejo muito sucesso!`
+    },
+    linkedin: {
+      firstContact: `Olá! Acompanho o crescimento de empresas no segmento de ${lead.segment} em ${lead.city}. Gostaria de me conectar e compartilhar um breve estudo de caso que fizemos sobre o impacto de websites corporativos e automações comerciais no setor.`,
+      secondContact: `Olá! Passando apenas para complementar nossa mensagem anterior. Identificamos algumas oportunidades técnicas na presença digital da ${lead.name} que poderiam expandir seus resultados na região. Tem interesse em dar uma olhada rápida?`,
+      followUp: `Olá, tudo bem? Vi que vocês têm excelente aceitação física no Maps. A criação de um funil digital corporativo estruturado para a ${lead.name} ajudaria a escalar as conversões. Podemos agendar uma conversa rápida de 10 minutos na próxima semana?`,
+      lastAttempt: `Olá! Deixo nosso contato corporativo aberto caso queiram reestruturar a presença digital e funil comercial da ${lead.name} no futuro. Muito sucesso!`
     }
   };
 
@@ -192,6 +198,12 @@ export const generateAiReport = async (lead, websiteAnalysis, socialAnalysis) =>
         "secondContact": "Direct rápido de acompanhamento.",
         "followUp": "Direct propondo o envio do diagnóstico em PDF.",
         "lastAttempt": "Último contato via direct."
+      },
+      "linkedin": {
+        "firstContact": "Mensagem profissional de apresentação corporativa no LinkedIn direcionada ao decisor.",
+        "secondContact": "Mensagem de follow-up focando em benchmarking setorial e concorrentes.",
+        "followUp": "Mensagem compartilhando valor ou insight técnico específico de conversão online.",
+        "lastAttempt": "Mensagem de despedida deixando contato de negócios."
       }
     }
   }`;

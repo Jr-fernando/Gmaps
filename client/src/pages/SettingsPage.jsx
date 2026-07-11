@@ -15,7 +15,11 @@ export default function SettingsPage() {
     follow_up_day_2: '',
     follow_up_day_5: '',
     follow_up_day_10: '',
-    fast_follow_up_mode: 'false'
+    fast_follow_up_mode: 'false',
+    webhook_url_new_lead: '',
+    webhook_url_status_changed: '',
+    webhook_url_message_sent: '',
+    webhook_url_proposal_sent: ''
   });
   
   const [loading, setLoading] = useState(true);
@@ -37,6 +41,28 @@ export default function SettingsPage() {
 
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleTestWebhook = async (event, url) => {
+    if (!url) {
+      alert('Por favor, insira a URL antes de realizar o teste.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/settings/test-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event, url })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`✓ Webhook enviado com sucesso! Evento: ${event}`);
+      } else {
+        alert(`❌ Falha no webhook: ${data.error}`);
+      }
+    } catch(err) {
+      alert(`❌ Erro ao disparar webhook: ${err.message}`);
+    }
   };
 
   const handleSave = async (e) => {
@@ -192,15 +218,107 @@ export default function SettingsPage() {
         {/* Webhooks / Integrations */}
         <div className="glass-card settings-section">
           <h3 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Share2 size={18} /> Integrações Externas (Webhooks)
+            <Share2 size={18} /> Integrações Externas & Webhooks de Automação
           </h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Integre o AgenticLeads com plataformas de automação como Make.com, Zapier ou N8N enviando webhooks em tempo real ao disparar contatos.
+            Integre o AgenticLeads 2.0 com plataformas de automação (Make.com, Zapier, n8n) enviando payloads JSON contendo dados reais dos leads nos eventos-chave.
           </p>
 
-          <div className="settings-row">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
             <div className="input-group">
-              <label className="input-label">WhatsApp Disparador Webhook URL</label>
+              <label className="input-label">Ao Capturar Novo Lead (NEW_LEAD)</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="https://hook.us1.make.com/..."
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  value={settings.webhook_url_new_lead || ''}
+                  onChange={(e) => handleChange('webhook_url_new_lead', e.target.value)}
+                />
+                <button 
+                  type="button" 
+                  className="btn-channel border"
+                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  onClick={() => handleTestWebhook('NEW_LEAD', settings.webhook_url_new_lead)}
+                >
+                  Testar
+                </button>
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Ao Mudar Status do Lead (STATUS_CHANGED)</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="https://hook.us1.make.com/..."
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  value={settings.webhook_url_status_changed || ''}
+                  onChange={(e) => handleChange('webhook_url_status_changed', e.target.value)}
+                />
+                <button 
+                  type="button" 
+                  className="btn-channel border"
+                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  onClick={() => handleTestWebhook('STATUS_CHANGED', settings.webhook_url_status_changed)}
+                >
+                  Testar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div className="input-group">
+              <label className="input-label">Ao Enviar Mensagem (MESSAGE_SENT)</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="https://hook.us1.make.com/..."
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  value={settings.webhook_url_message_sent || ''}
+                  onChange={(e) => handleChange('webhook_url_message_sent', e.target.value)}
+                />
+                <button 
+                  type="button" 
+                  className="btn-channel border"
+                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  onClick={() => handleTestWebhook('MESSAGE_SENT', settings.webhook_url_message_sent)}
+                >
+                  Testar
+                </button>
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Ao Gerar Proposta (PROPOSAL_SENT)</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="https://hook.us1.make.com/..."
+                  className="input-field"
+                  style={{ flex: 1 }}
+                  value={settings.webhook_url_proposal_sent || ''}
+                  onChange={(e) => handleChange('webhook_url_proposal_sent', e.target.value)}
+                />
+                <button 
+                  type="button" 
+                  className="btn-channel border"
+                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  onClick={() => handleTestWebhook('PROPOSAL_SENT', settings.webhook_url_proposal_sent)}
+                >
+                  Testar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-row" style={{ marginTop: '24px' }}>
+            <div className="input-group">
+              <label className="input-label">WhatsApp Disparador Webhook URL (Legado/Geral)</label>
               <input
                 type="text"
                 placeholder="https://hook.us1.make.com/..."

@@ -4,6 +4,8 @@ import { searchCompanies } from './services/scraperService.js';
 import { analyzePresence } from './services/presenceService.js';
 import { generateAiReport, generateProposalText, chatWithLeadAi } from './services/aiService.js';
 import { processPendingFollowUps } from './services/cronService.js';
+import { validateLeadSearch, validateCrmUpdate } from './validators/validator.js';
+import { dispatchWebhookEvent } from './services/webhookService.js';
 
 const router = express.Router();
 
@@ -80,64 +82,49 @@ router.get('/dashboard/stats', async (req, res) => {
 });
 
 // 2. Leads search triggering
-router.post('/leads/search', async (req, res) => {
+router.post('/leads/search', validateLeadSearch, async (req, res) => {
   const { query, city } = req.body;
-  if (!query || !city) {
-    return res.status(400).json({ error: 'Query e Cidade são obrigatórios' });
-  }
-
+  
   try {
-    console.log(`[API] Iniciando busca ativa por "${query}" em "${city}"...`);
-    const companies = await searchCompanies(query, city);
+    console.log(`[API] Iniciando busca ativa para segmento '${query}' em '${city}'...`);
+    const leads = await searchCompanies(query, city);
+
     const addedLeads = [];
-    const now = new Date().toISOString();
+    for (const lead of leads) {
+      try {
+        const existing = await dbService.leads.findLeadByNameAndCity(lead.name, lead.city);
+        if (existing) {
+          console.log(`[API] Lead '${lead.name}' em '${lead.city}' já cadastrado. Pulando...`);
+          continue;
+        }
 
-    for (const company of companies) {
-      // Check if lead already exists in DB by name and city
-      const existing = await dbService.leads.findLeadByNameAndCity(company.name, company.city);
-      if (existing) {
-        console.log(`[API] Lead "${company.name}" já existe no banco. Ignorando.`);
-        continue;
+        // Generate presence audit scores
+        const analysis = await analyzePresence(lead);
+        lead.opportunity_score = analysis.opportunityScore;
+        lead.has_website = lead.website ? 1 : 0;
+        lead.website_analysis = analysis.websiteAnalysis;
+        lead.social_analysis = analysis.socialAnalysis;
+
+        // Generate default AI reports and follow-up templates
+        const aiResult = await generateAiReport(lead, analysis.websiteAnalysis, analysis.socialAnalysis);
+        lead.first_message = aiResult.firstMessage;
+        lead.ai_report = aiResult.aiReport;
+        
+        // Save to database
+        const addedId = await dbService.leads.createLead(lead);
+        if (addedId) {
+          // Schedule background follow-up templates
+          await scheduleFollowUpsForLead(addedId, lead.name, '');
+          
+          const fullLead = await dbService.leads.getLeadById(addedId);
+          addedLeads.push(fullLead);
+
+          // Dispatch Webhook Event
+          dispatchWebhookEvent('NEW_LEAD', fullLead);
+        }
+      } catch (e) {
+        console.error(`[API] Erro ao cadastrar lead individual '${lead.name}':`, e.message);
       }
-
-      // Analyze Presence
-      const analysis = await analyzePresence(company);
-      
-      // Merge analysis results
-      const leadData = {
-        ...company,
-        opportunity_score: analysis.opportunityScore,
-        website_analysis: analysis.websiteAnalysis,
-        social_analysis: analysis.socialAnalysis,
-        created_at: now,
-        updated_at: now,
-        owner: '',
-        value_negotiated: 0,
-        next_action: '',
-        notes: '',
-        schedule: company.schedule || '',
-        reviews: company.reviews || [],
-        gallery: company.gallery || [],
-        first_contact_date: '',
-        last_contact_date: '',
-        history: [],
-        proposal_text: '',
-        proposal_sent: 0
-      };
-
-      // Generate AI Report and prospecting message (first message)
-      const ai = await generateAiReport(leadData, analysis.websiteAnalysis, analysis.socialAnalysis);
-      leadData.ai_report = ai.aiReport;
-      leadData.first_message = ai.firstMessage;
-
-      // Save to database using dbService
-      const leadId = await dbService.leads.createLead(leadData);
-      leadData.id = leadId;
-      
-      // Auto schedule follow-up messages
-      await scheduleFollowUpsForLead(leadData.id, leadData.name, '');
-
-      addedLeads.push(leadData);
     }
 
     res.json({ message: `Busca finalizada. ${addedLeads.length} novos leads adicionados.`, leads: addedLeads });
@@ -187,7 +174,7 @@ router.get('/leads/:id', async (req, res) => {
 });
 
 // 5. Update lead status
-router.put('/leads/:id/status', async (req, res) => {
+router.put('/leads/:id/status', validateCrmUpdate, async (req, res) => {
   const { status } = req.body;
   if (!status) {
     return res.status(400).json({ error: 'Status é obrigatório' });
@@ -195,6 +182,11 @@ router.put('/leads/:id/status', async (req, res) => {
 
   try {
     await dbService.leads.updateLeadStatus(req.params.id, status);
+    const updated = await dbService.leads.getLeadById(req.params.id);
+    
+    // Dispatch webhook event
+    dispatchWebhookEvent('STATUS_CHANGED', updated);
+
     res.json({ success: true, message: 'Status atualizado com sucesso' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -202,16 +194,17 @@ router.put('/leads/:id/status', async (req, res) => {
 });
 
 // 6. Update complete CRM lead details
-router.put('/leads/:id/crm', async (req, res) => {
+router.put('/leads/:id/crm', validateCrmUpdate, async (req, res) => {
   const { 
     owner, value_negotiated, next_action, notes, status,
-    first_contact_date, last_contact_date, history, proposal_text, proposal_sent 
+    first_contact_date, last_contact_date, history, proposal_text, proposal_sent,
+    labels, probability, next_contact_date: nextContactDate
   } = req.body;
 
   try {
     await dbService.leads.updateLeadCrm(req.params.id, {
       owner,
-      value_negotiated: parseFloat(value_negotiated || 0),
+      value_negotiated,
       next_action,
       notes,
       status,
@@ -219,8 +212,17 @@ router.put('/leads/:id/crm', async (req, res) => {
       last_contact_date,
       history,
       proposal_text,
-      proposal_sent
+      proposal_sent,
+      labels,
+      probability,
+      next_contact_date: nextContactDate
     });
+
+    const updated = await dbService.leads.getLeadById(req.params.id);
+    
+    // Dispatch Webhook status changed event
+    dispatchWebhookEvent('STATUS_CHANGED', updated);
+
     res.json({ success: true, message: 'Dados do CRM atualizados com sucesso' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -284,13 +286,21 @@ router.post('/leads/:id/proposal', async (req, res) => {
       value_negotiated: lead.value_negotiated || 0,
       next_action: lead.next_action || '',
       notes: lead.notes || '',
-      status: 'Proposta enviada', // Update status to proposal sent
+      status: 'Proposta enviada',
       first_contact_date: lead.first_contact_date || now,
       last_contact_date: now,
       history: updatedHistory,
       proposal_text: proposalMarkdown,
-      proposal_sent: 1
+      proposal_sent: 1,
+      labels: lead.labels || [],
+      probability: lead.probability || 50,
+      next_contact_date: lead.next_contact_date || ''
     });
+
+    const updated = await dbService.leads.getLeadById(req.params.id);
+    
+    // Dispatch webhook proposal event
+    dispatchWebhookEvent('PROPOSAL_SENT', { lead: updated, services });
 
     res.json({ proposal: proposalMarkdown });
   } catch (err) {
@@ -300,7 +310,7 @@ router.post('/leads/:id/proposal', async (req, res) => {
 
 // 10. Send message / Trigger webhook
 router.post('/leads/:id/send-message', async (req, res) => {
-  const { message, channel } = req.body; // channel: 'whatsapp', 'email', 'instagram'
+  const { message, channel } = req.body;
   
   try {
     const lead = await dbService.leads.getLeadById(req.params.id);
@@ -333,23 +343,16 @@ router.post('/leads/:id/send-message', async (req, res) => {
       last_contact_date: lastContactDate,
       history: updatedHistory,
       proposal_text: lead.proposal_text || '',
-      proposal_sent: lead.proposal_sent || 0
+      proposal_sent: lead.proposal_sent || 0,
+      labels: lead.labels || [],
+      probability: lead.probability || 50,
+      next_contact_date: lead.next_contact_date || ''
     });
 
-    // Call settings webhook if present
-    const webhookUrl = await dbService.settings.getSettingByKey(`${channel}_webhook_url`);
+    const updated = await dbService.leads.getLeadById(req.params.id);
     
-    if (webhookUrl && webhookUrl.trim() !== '') {
-      fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lead: lead,
-          channel: channel,
-          message: message
-        })
-      }).catch(err => console.error(`[Webhook Error ${channel}]`, err.message));
-    }
+    // Dispatch Webhook Message event
+    dispatchWebhookEvent('MESSAGE_SENT', { lead: updated, channel, message });
 
     res.json({ success: true, message: `Mensagem enviada com sucesso via ${channel}!` });
   } catch (err) {
@@ -404,6 +407,36 @@ router.post('/settings', async (req, res) => {
     res.json({ success: true, message: 'Configurações salvas com sucesso!' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// 14. Webhook simulation endpoint
+router.post('/settings/test-webhook', async (req, res) => {
+  const { event, url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'URL do webhook é obrigatória' });
+  }
+  
+  try {
+    console.log(`[API Webhook Test] Disparando POST para: ${url}...`);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: event || 'TEST_EVENT',
+        timestamp: new Date().toISOString(),
+        test: true,
+        message: 'Esta é uma carga de teste enviada pelo AgenticLeads 2.0!'
+      })
+    });
+    
+    if (response.ok) {
+      res.json({ success: true, message: 'Webhook de teste enviado com sucesso!' });
+    } else {
+      res.status(400).json({ error: `O webhook respondeu com status: ${response.status} ${response.statusText}` });
+    }
+  } catch (err) {
+    res.status(500).json({ error: `Falha ao disparar webhook: ${err.message}` });
   }
 });
 

@@ -27,6 +27,10 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
   const [newHistoryText, setNewHistoryText] = useState('');
   const [crmProposalSent, setCrmProposalSent] = useState(false);
   const [crmProposalText, setCrmProposalText] = useState('');
+  const [crmLabels, setCrmLabels] = useState([]);
+  const [crmProbability, setCrmProbability] = useState(50);
+  const [crmNextContactDate, setCrmNextContactDate] = useState('');
+  const [newLabelText, setNewLabelText] = useState('');
   const [savingCrm, setSavingCrm] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -64,6 +68,17 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
         setCrmHistory(data.history || []);
         setCrmProposalSent(data.proposal_sent === 1 || data.proposal_sent === true);
         setCrmProposalText(data.proposal_text || '');
+        
+        let parsedLabels = [];
+        try {
+          parsedLabels = typeof data.labels === 'string' ? JSON.parse(data.labels) : data.labels || [];
+        } catch (err) {
+          console.warn('Erro ao parsear labels:', err);
+          parsedLabels = [];
+        }
+        setCrmLabels(parsedLabels);
+        setCrmProbability(data.probability !== undefined ? data.probability : 50);
+        setCrmNextContactDate(data.next_contact_date || '');
         
         // Initial setup for editable message
         const initialMsg = data.prospectingMessages?.[activeMessageChannel]?.[activeMessageStage] 
@@ -110,7 +125,10 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
           last_contact_date: crmLastContactDate,
           history: crmHistory,
           proposal_text: crmProposalText,
-          proposal_sent: crmProposalSent
+          proposal_sent: crmProposalSent,
+          labels: crmLabels,
+          probability: crmProbability,
+          next_contact_date: crmNextContactDate
         })
       });
       const resData = await res.json();
@@ -127,7 +145,10 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
           last_contact_date: crmLastContactDate,
           history: crmHistory,
           proposal_text: crmProposalText,
-          proposal_sent: crmProposalSent
+          proposal_sent: crmProposalSent,
+          labels: crmLabels,
+          probability: crmProbability,
+          next_contact_date: crmNextContactDate
         }));
         if (onLeadUpdated) onLeadUpdated();
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -173,7 +194,10 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
         last_contact_date: now,
         history: updatedHistory,
         proposal_text: crmProposalText,
-        proposal_sent: crmProposalSent
+        proposal_sent: crmProposalSent,
+        labels: crmLabels,
+        probability: crmProbability,
+        next_contact_date: crmNextContactDate
       })
     })
     .then(res => res.json())
@@ -183,7 +207,10 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
           ...prev, 
           history: updatedHistory,
           last_contact_date: now,
-          first_contact_date: firstContact
+          first_contact_date: firstContact,
+          labels: crmLabels,
+          probability: crmProbability,
+          next_contact_date: crmNextContactDate
         }));
         if (onLeadUpdated) onLeadUpdated();
       }
@@ -503,6 +530,78 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
                     value={crmNextAction}
                     onChange={(e) => setCrmNextAction(e.target.value)}
                   />
+                </div>
+              </div>
+
+               <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label className="input-label-mini">Probabilidade de Conversão</label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>{crmProbability}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="100" 
+                  step="5"
+                  style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                  value={crmProbability}
+                  onChange={(e) => setCrmProbability(parseInt(e.target.value))}
+                />
+              </div>
+
+              <div className="input-group">
+                <label className="input-label-mini">Data do Próximo Contato</label>
+                <input 
+                  type="date" 
+                  className="input-field-mini"
+                  style={{ colorScheme: 'dark', width: '100%' }}
+                  value={crmNextContactDate ? crmNextContactDate.slice(0, 10) : ''}
+                  onChange={(e) => setCrmNextContactDate(e.target.value)}
+                />
+              </div>
+
+              <div className="input-group">
+                <label className="input-label-mini">Etiquetas (Segmentação/Tags)</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                  {crmLabels.length > 0 ? (
+                    crmLabels.map((lbl, idx) => (
+                      <span key={idx} className="crm-card-tag" style={{ margin: 0, padding: '2px 8px', background: 'rgba(139,92,246,0.15)', color: 'var(--accent-secondary)', fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {lbl}
+                        <button 
+                          type="button" 
+                          onClick={() => setCrmLabels(crmLabels.filter(l => l !== lbl))}
+                          style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Nenhuma etiqueta associada</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Adicionar tag..." 
+                    className="input-field-mini"
+                    style={{ flex: 1, height: '28px', fontSize: '0.72rem' }}
+                    value={newLabelText}
+                    onChange={(e) => setNewLabelText(e.target.value)}
+                  />
+                  <button 
+                    type="button" 
+                    className="btn-channel border"
+                    style={{ padding: '2px 8px', height: '28px', fontSize: '0.7rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center' }}
+                    onClick={() => {
+                      if (newLabelText.trim() && !crmLabels.includes(newLabelText.trim())) {
+                        setCrmLabels([...crmLabels, newLabelText.trim()]);
+                        setNewLabelText('');
+                      }
+                    }}
+                  >
+                    + Add
+                  </button>
                 </div>
               </div>
 

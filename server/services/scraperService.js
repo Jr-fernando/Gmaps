@@ -152,9 +152,23 @@ function generateMockLeads(query, city) {
       website = `https://www.${slug}.com.br`;
     }
 
-    const rating = parseFloat((3.2 + Math.random() * 1.8).toFixed(1));
-    const reviewsCount = Math.floor(5 + Math.random() * 320);
-    const followers = Math.random() > 0.2 ? Math.floor(100 + Math.random() * 8500) : 0;
+    const hasInstagram = Math.random() > 0.3; // 70% have instagram
+    const instagram = hasInstagram ? `@${slugName}` : '';
+    const instagramLink = hasInstagram ? `https://instagram.com/${slugName}` : '';
+
+    const hasFacebook = Math.random() > 0.4; // 60% have facebook
+    const facebook = hasFacebook ? `https://facebook.com/${slugName}` : '';
+
+    // Make some ratings low, some reviews very low to match the search filters
+    const rating = Math.random() > 0.25 
+      ? parseFloat((4.0 + Math.random() * 1.0).toFixed(1)) 
+      : parseFloat((2.5 + Math.random() * 1.4).toFixed(1));
+      
+    const reviewsCount = Math.random() > 0.3
+      ? Math.floor(25 + Math.random() * 300)
+      : Math.floor(1 + Math.random() * 20);
+
+    const followers = hasInstagram ? Math.floor(100 + Math.random() * 8500) : 0;
 
     const neighborhood = localNeighborhoods[Math.floor(Math.random() * localNeighborhoods.length)];
     const street = ['Rua Augusta', 'Av. Paulista', 'Rua das Flores', 'Av. Getúlio Vargas', 'Av. Brasil', 'Rua Amazonas'][Math.floor(Math.random() * 6)];
@@ -187,8 +201,8 @@ function generateMockLeads(query, city) {
       whatsapp: `55${cleanPhone}`,
       email: `contato@${slugName}.com.br`,
       website: website,
-      instagram: `@${slugName}`,
-      facebook: `https://facebook.com/${slugName}`,
+      instagram: instagram,
+      facebook: facebook,
       city: city.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' '),
       state: stateCode,
       address: `${street}, ${addressNumber} - ${neighborhood}`,
@@ -198,7 +212,7 @@ function generateMockLeads(query, city) {
       description: matched.description,
       category: matched.category,
       gmaps_link: `https://google.com/maps/place/${encodeURIComponent(companyName + ' ' + city)}`,
-      instagram_link: `https://instagram.com/${slugName}`,
+      instagram_link: instagramLink,
       status: 'Novo Lead',
       has_website: hasWebsite ? 1 : 0,
       latitude: lat,

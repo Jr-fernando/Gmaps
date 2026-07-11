@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS leads (
     history JSONB, -- Histórico de interações (JSON Array)
     proposal_text TEXT, -- Proposta enviada
     proposal_sent BOOLEAN DEFAULT FALSE, -- Flag de proposta enviada
+    labels JSONB DEFAULT '[]', -- Etiquetas (JSON Array)
+    probability INTEGER DEFAULT 50, -- Probabilidade de conversão (0-100)
+    next_contact_date TIMESTAMP WITH TIME ZONE, -- Data do próximo contato
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_name_city UNIQUE (name, city)
