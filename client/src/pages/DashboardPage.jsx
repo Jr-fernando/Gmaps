@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Send, MessageSquare, CheckCircle, TrendingUp, DollarSign } from 'lucide-react';
+import { Users, Send, MessageSquare, DollarSign } from 'lucide-react';
 
-export default function DashboardView() {
+export default function DashboardPage() {
   const [stats, setStats] = useState({
     totalLeads: 0,
     newLeads: 0,
@@ -42,7 +42,7 @@ export default function DashboardView() {
     : 1;
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Stats Cards Grid */}
       <div className="stats-grid">
         <div className="glass-card stat-card">

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft, Globe, Phone, Mail, MapPin, Instagram, Facebook, Star, Clock,
-  Send, ShieldAlert, FileText, Bot, RefreshCw, MessageSquare, Copy, Check, Save, User, DollarSign, Calendar, Eye, PlusCircle
+  Send, ShieldAlert, FileText, RefreshCw, MessageSquare, Copy, Check, Save, User, DollarSign, Calendar, Eye, PlusCircle, Bot
 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
@@ -9,7 +9,7 @@ const STATUS_OPTIONS = [
   'Negociação', 'Proposta enviada', 'Cliente', 'Perdido'
 ];
 
-export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
+export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('general');
@@ -48,7 +48,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
   const [activeMessageStage, setActiveMessageStage] = useState('firstContact');
   const [editableMessage, setEditableMessage] = useState('');
 
-  const fetchLeadDetails = () => {
+  const fetchLeadDetails = useCallback(() => {
     setLoading(true);
     fetch(`/api/leads/${leadId}`)
       .then(res => res.json())
@@ -77,11 +77,11 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
         console.error('Erro ao buscar detalhes do lead:', err);
         setLoading(false);
       });
-  };
+  }, [leadId, activeMessageChannel, activeMessageStage]);
 
   useEffect(() => {
     if (leadId) fetchLeadDetails();
-  }, [leadId]);
+  }, [leadId, fetchLeadDetails]);
 
   // Sync editable message when channel/stage tabs change
   useEffect(() => {
@@ -113,8 +113,8 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
           proposal_sent: crmProposalSent
         })
       });
-      const data = await res.json();
-      if (data.success) {
+      const resData = await res.json();
+      if (resData.success) {
         setSaveSuccess(true);
         setLead(prev => ({ 
           ...prev, 
@@ -177,8 +177,8 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
       })
     })
     .then(res => res.json())
-    .then(data => {
-      if (data.success) {
+    .then(resData => {
+      if (resData.success) {
         setLead(prev => ({ 
           ...prev, 
           history: updatedHistory,
@@ -199,12 +199,11 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
 
   const handleSendMessage = async (channel) => {
     try {
-      const res = await fetch(`/api/leads/${lead.id}/send-message`, {
+      await fetch(`/api/leads/${lead.id}/send-message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: editableMessage, channel })
       });
-      const data = await res.json();
       
       // Reload lead details to fetch updated history & last contact dates
       fetch(`/api/leads/${lead.id}`)
@@ -235,8 +234,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
   const handleRegenerateReport = async () => {
     setRegenerating(true);
     try {
-      const response = await fetch(`/api/leads/${lead.id}/generate-message`, { method: 'POST' });
-      const data = await response.json();
+      await fetch(`/api/leads/${lead.id}/generate-message`, { method: 'POST' });
       
       // Refetch details to populate advanced messages too
       fetch(`/api/leads/${lead.id}`)
@@ -338,7 +336,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
     <div className="company-details-view animate-fade-in">
       {/* Header Bar */}
       <div className="details-header-bar">
-        <button className="btn-back" onClick={onBack}>
+        <button type="button" className="btn-back" onClick={onBack}>
           <ArrowLeft size={16} />
           Voltar para a Lista
         </button>
@@ -388,7 +386,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                 <Phone size={16} className="contact-icon" />
                 <span style={{ flexGrow: 1 }}>{lead.phone || 'Telefone indisponível'}</span>
                 {lead.phone && (
-                  <button className="btn-copy-mini" onClick={() => handleCopy(lead.phone, 'phone')}>
+                  <button type="button" className="btn-copy-mini" onClick={() => handleCopy(lead.phone, 'phone')}>
                     {copiedKey === 'phone' ? <Check size={12} /> : <Copy size={12} />}
                   </button>
                 )}
@@ -405,7 +403,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                 <div className="contact-row">
                   <Send size={16} className="contact-icon green" />
                   <span style={{ flexGrow: 1 }}>+{lead.whatsapp}</span>
-                  <button className="btn-copy-mini" onClick={() => handleCopy(lead.whatsapp, 'whatsapp')}>
+                  <button type="button" className="btn-copy-mini" onClick={() => handleCopy(lead.whatsapp, 'whatsapp')}>
                     {copiedKey === 'whatsapp' ? <Check size={12} /> : <Copy size={12} />}
                   </button>
                 </div>
@@ -536,22 +534,22 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
         <div className="profile-right-col">
           {/* Navigation Tabs */}
           <div className="details-tabs-bar">
-            <button className={`details-tab-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
+            <button type="button" className={`details-tab-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
               Geral & Localização
             </button>
-            <button className={`details-tab-btn ${activeTab === 'audit' ? 'active' : ''}`} onClick={() => setActiveTab('audit')}>
+            <button type="button" className={`details-tab-btn ${activeTab === 'audit' ? 'active' : ''}`} onClick={() => setActiveTab('audit')}>
               Auditoria Web
             </button>
-            <button className={`details-tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>
+            <button type="button" className={`details-tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>
               Diagnóstico IA
             </button>
-            <button className={`details-tab-btn ${activeTab === 'prospecting' ? 'active' : ''}`} onClick={() => setActiveTab('prospecting')}>
+            <button type="button" className={`details-tab-btn ${activeTab === 'prospecting' ? 'active' : ''}`} onClick={() => setActiveTab('prospecting')}>
               Mensagens Customizadas
             </button>
-            <button className={`details-tab-btn ${activeTab === 'proposal' ? 'active' : ''}`} onClick={() => setActiveTab('proposal')}>
+            <button type="button" className={`details-tab-btn ${activeTab === 'proposal' ? 'active' : ''}`} onClick={() => setActiveTab('proposal')}>
               Proposta Comercial
             </button>
-            <button className={`details-tab-btn ${activeTab === 'copilot' ? 'active' : ''}`} onClick={() => setActiveTab('copilot')}>
+            <button type="button" className={`details-tab-btn ${activeTab === 'copilot' ? 'active' : ''}`} onClick={() => setActiveTab('copilot')}>
               Copiloto Comercial
             </button>
           </div>
@@ -759,6 +757,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h3 className="section-header-mini" style={{ margin: 0 }}>Diagnóstico Gerado por IA</h3>
                     <button 
+                      type="button"
                       onClick={handleRegenerateReport} 
                       disabled={regenerating} 
                       className="btn-trigger-cron"
@@ -788,18 +787,21 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                   {/* Channel Select Tabs */}
                   <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px' }}>
                     <button 
+                      type="button"
                       className={`details-tab-btn mini ${activeMessageChannel === 'whatsapp' ? 'active' : ''}`}
                       onClick={() => setActiveMessageChannel('whatsapp')}
                     >
                       WhatsApp
                     </button>
                     <button 
+                      type="button"
                       className={`details-tab-btn mini ${activeMessageChannel === 'email' ? 'active' : ''}`}
                       onClick={() => setActiveMessageChannel('email')}
                     >
                       E-mail
                     </button>
                     <button 
+                      type="button"
                       className={`details-tab-btn mini ${activeMessageChannel === 'instagram' ? 'active' : ''}`}
                       onClick={() => setActiveMessageChannel('instagram')}
                     >
@@ -810,24 +812,28 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                   {/* Stage Select Tabs */}
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
                     <button 
+                      type="button"
                       className={`stage-select-btn ${activeMessageStage === 'firstContact' ? 'active' : ''}`}
                       onClick={() => setActiveMessageStage('firstContact')}
                     >
                       1º Contato (Abordagem)
                     </button>
                     <button 
+                      type="button"
                       className={`stage-select-btn ${activeMessageStage === 'secondContact' ? 'active' : ''}`}
                       onClick={() => setActiveMessageStage('secondContact')}
                     >
                       2º Contato (Lembrete)
                     </button>
                     <button 
+                      type="button"
                       className={`stage-select-btn ${activeMessageStage === 'followUp' ? 'active' : ''}`}
                       onClick={() => setActiveMessageStage('followUp')}
                     >
                       3º Contato (Follow-up)
                     </button>
                     <button 
+                      type="button"
                       className={`stage-select-btn ${activeMessageStage === 'lastAttempt' ? 'active' : ''}`}
                       onClick={() => setActiveMessageStage('lastAttempt')}
                     >
@@ -844,24 +850,24 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                   />
 
                   <div className="message-actions-row">
-                    <button className="btn-channel" onClick={() => handleCopy(editableMessage, 'message_copied')}>
+                    <button type="button" className="btn-channel" onClick={() => handleCopy(editableMessage, 'message_copied')}>
                       {copiedKey === 'message_copied' ? <Check size={14} style={{ color: 'var(--color-success)' }} /> : <Copy size={14} />}
                       {copiedKey === 'message_copied' ? 'Copiado!' : 'Copiar Mensagem'}
                     </button>
 
                     <div className="message-send-channels">
                       {activeMessageChannel === 'whatsapp' && (
-                        <button className="btn-channel whatsapp" onClick={() => handleSendMessage('whatsapp')}>
+                        <button type="button" className="btn-channel whatsapp" onClick={() => handleSendMessage('whatsapp')}>
                           <Send size={14} /> Abrir WhatsApp Web
                         </button>
                       )}
                       {activeMessageChannel === 'email' && (
-                        <button className="btn-channel email" onClick={() => handleSendMessage('email')}>
+                        <button type="button" className="btn-channel email" onClick={() => handleSendMessage('email')}>
                           <Mail size={14} /> Disparar E-mail
                         </button>
                       )}
                       {activeMessageChannel === 'instagram' && (
-                        <button className="btn-channel instagram" onClick={() => handleSendMessage('instagram')}>
+                        <button type="button" className="btn-channel instagram" onClick={() => handleSendMessage('instagram')}>
                           <Instagram size={14} /> Enviar no Instagram
                         </button>
                       )}
@@ -944,6 +950,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                   </div>
 
                   <button 
+                    type="button"
                     className="btn-proposal-generate" 
                     onClick={handleGenerateProposal}
                     disabled={generatingProposal}
@@ -957,6 +964,7 @@ export default function CompanyDetailsView({ leadId, onBack, onLeadUpdated }) {
                     <div className="proposal-preview-box" style={{ whiteSpace: 'pre-wrap', marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
                         <button 
+                          type="button"
                           className="btn-channel" 
                           style={{ padding: '4px 8px', fontSize: '0.75rem' }}
                           onClick={() => handleCopy(proposalText || crmProposalText, 'proposal_copied')}

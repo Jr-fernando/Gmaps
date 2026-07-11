@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Key, Sliders, Bell, Share2, Info } from 'lucide-react';
+import { Save, Key, Sliders, Share2, Info } from 'lucide-react';
 
-export default function SettingsView() {
+export default function SettingsPage() {
   const [settings, setSettings] = useState({
     gemini_api_key: '',
     openai_api_key: '',
@@ -72,7 +72,7 @@ export default function SettingsView() {
   }
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '900px', margin: '0 auto' }} className="animate-fade-in">
       <form onSubmit={handleSave}>
         
         {/* API Credentials */}
@@ -172,7 +172,7 @@ export default function SettingsView() {
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifySpace: 'space-between', padding: '16px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
             <div>
               <span style={{ fontWeight: 'bold', fontSize: '0.9rem', display: 'block', marginBottom: '4px' }}>Modo de Simulação Rápida (Testes)</span>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Quando ativado, os follow-ups são agendados em **minutos** em vez de **dias** (Ex: D+2 agenda para daqui a 2 minutos). Excelente para validar o funcionamento do scheduler local.</span>

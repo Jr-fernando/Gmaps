@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { ShieldAlert, Globe, Star, Filter, RefreshCw, Trash, LayoutGrid, List } from 'lucide-react';
 
 const COLUMNS = [
@@ -12,7 +12,7 @@ const COLUMNS = [
   { id: 'Perdido', title: 'Perdido', color: 'var(--text-muted)' }
 ];
 
-export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
+export default function CRMBoardPage({ onSelectLead, refreshTrigger }) {
   const [leads, setLeads] = useState([]);
   const [cities, setCities] = useState([]);
   const [segments, setSegments] = useState([]);
@@ -33,7 +33,7 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
   const [filterRating, setFilterRating] = useState('');
   const [filterReviews, setFilterReviews] = useState('');
 
-  const fetchLeads = () => {
+  const fetchLeads = useCallback(() => {
     setLoading(true);
     let url = `/api/leads?`;
     if (searchQuery) url += `query=${encodeURIComponent(searchQuery)}&`;
@@ -68,15 +68,15 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
         console.error('Erro ao buscar leads:', err);
         setLoading(false);
       });
-  };
+  }, [
+    searchQuery, filterCity, filterState, filterSegment, filterWebsite, filterScore,
+    filterInstagram, filterFacebook, filterWhatsapp, filterPhone, filterRating, filterReviews,
+    cities.length, segments.length
+  ]);
 
   useEffect(() => {
     fetchLeads();
-  }, [
-    searchQuery, filterCity, filterState, filterSegment, filterWebsite, filterScore, 
-    filterInstagram, filterFacebook, filterWhatsapp, filterPhone, filterRating, filterReviews,
-    refreshTrigger
-  ]);
+  }, [fetchLeads, refreshTrigger]);
 
   // Drag & Drop handlers
   const handleDragStart = (e, leadId) => {
@@ -144,7 +144,7 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       
       {/* Advanced Filters Panel */}
-      <div className="glass-card" style={{ padding: '16px 20px', marginBottom: '20px' }}>
+      <div className="glass-card animate-fade-in" style={{ padding: '16px 20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff', marginBottom: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
             <Filter size={16} style={{ color: 'var(--accent-primary)' }} />
@@ -239,13 +239,6 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
           </select>
 
           {/* WhatsApp presence */}
-          <select className="filter-select" value={filterWebsite} onChange={(e) => setFilterWebsite(e.target.value)}>
-            <option value="">Filtrar Site</option>
-            <option value="0">Sem site próprio</option>
-            <option value="1">Possui site</option>
-          </select>
-
-          {/* WhatsApp presence filter override */}
           <select className="filter-select" value={filterWhatsapp} onChange={(e) => setFilterWhatsapp(e.target.value)}>
             <option value="">WhatsApp</option>
             <option value="1">Com WhatsApp</option>
@@ -299,6 +292,7 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
           <button 
+            type="button"
             className="filter-select" 
             style={{ backgroundColor: 'transparent', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', padding: '6px 12px', border: '1px solid var(--border-color)', borderRadius: '6px' }}
             onClick={handleClearFilters}
@@ -316,7 +310,7 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
         <>
           {viewMode === 'kanban' ? (
             /* Kanban Board */
-            <div className="crm-board">
+            <div className="crm-board animate-fade-in">
               {COLUMNS.map(col => {
                 const colLeads = leadsByStatus[col.id] || [];
                 return (
@@ -359,7 +353,7 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
                                 {lead.segment}
                               </span>
                               
-                              <button className="btn-close-drawer" style={{ padding: '2px', color: 'var(--text-muted)' }} onClick={(e) => handleDeleteLead(e, lead.id)}>
+                              <button type="button" className="btn-close-drawer" style={{ padding: '2px', color: 'var(--text-muted)' }} onClick={(e) => handleDeleteLead(e, lead.id)}>
                                 <Trash size={12} />
                               </button>
                             </div>
@@ -482,6 +476,7 @@ export default function CRMBoardView({ onSelectLead, refreshTrigger }) {
                         </td>
                         <td style={{ padding: '16px', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                           <button 
+                            type="button"
                             className="btn-close-drawer" 
                             style={{ padding: '6px', color: 'var(--text-muted)' }} 
                             onClick={(e) => handleDeleteLead(e, lead.id)}
