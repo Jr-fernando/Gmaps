@@ -173,7 +173,8 @@ export default function LeadDetailPanel({ leadId, onClose, onLeadUpdated }) {
   }
 
   // Parse details
-  const { websiteAnalysis, socialAnalysis } = lead;
+  const websiteAnalysis = lead.website_analysis || {};
+  const socialAnalysis = lead.social_analysis || {};
   
   // Custom Opportunity badge
   let scoreColor = 'good';
