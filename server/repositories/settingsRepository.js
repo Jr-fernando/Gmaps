@@ -1,14 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
-import { dbGet, dbRun, dbAll } from '../db.js';
+import { dbGet, dbRun, dbAll, isSupabaseEnabled, supabase } from '../db.js';
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const isSupabaseEnabled = supabaseUrl !== '' && supabaseKey !== '';
-
-let supabase = null;
-if (isSupabaseEnabled) {
-  supabase = createClient(supabaseUrl, supabaseKey);
-}
+const secretKeys = new Set(['gemini_api_key', 'openai_api_key', 'claude_api_key', 'google_places_api_key']);
 
 export const settingsRepository = {
   // 1. Obter todas as configurações
@@ -31,6 +23,16 @@ export const settingsRepository = {
     }
   },
 
+  getPublicSettings: async () => {
+    const settings = await settingsRepository.getSettings();
+    const publicSettings = { ...settings };
+    for (const key of secretKeys) {
+      publicSettings[key] = '';
+      publicSettings[`${key}_configured`] = Boolean(settings[key]);
+    }
+    return publicSettings;
+  },
+
   // 2. Obter configuração única
   getSettingByKey: async (key) => {
     if (isSupabaseEnabled) {
@@ -46,7 +48,9 @@ export const settingsRepository = {
   // 3. Salvar configurações
   saveSettings: async (settingsObj) => {
     if (isSupabaseEnabled) {
-      const insertRows = Object.entries(settingsObj).map(([key, value]) => ({
+      const insertRows = Object.entries(settingsObj)
+        .filter(([key, value]) => !(secretKeys.has(key) && !String(value || '').trim()))
+        .map(([key, value]) => ({
         key,
         value: String(value),
         updated_at: new Date().toISOString()
@@ -58,6 +62,7 @@ export const settingsRepository = {
       }
     } else {
       for (const [key, value] of Object.entries(settingsObj)) {
+        if (secretKeys.has(key) && !String(value || '').trim()) continue;
         await dbRun(
           'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
           [key, String(value)]

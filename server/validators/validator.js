@@ -19,6 +19,9 @@ export const validateCrmUpdate = (req, res, next) => {
   if (status && typeof status !== 'string') {
     return res.status(400).json({ error: 'O status do CRM deve ser válido.' });
   }
+  if (status && !['Novo Lead', 'Entrar em contato', 'Mensagem enviada', 'Respondeu', 'Negociação', 'Proposta enviada', 'Cliente', 'Perdido'].includes(status)) {
+    return res.status(400).json({ error: 'O status do CRM é inválido.' });
+  }
   if (owner && typeof owner !== 'string') {
     return res.status(400).json({ error: 'O nome do responsável deve ser válido.' });
   }
@@ -39,5 +42,25 @@ export const validateCrmUpdate = (req, res, next) => {
     req.body.probability = prob;
   }
   
+  next();
+};
+
+export const validateLeadId = (req, res, next) => {
+  const { id } = req.params;
+  if (!id || String(id).length > 64) {
+    return res.status(400).json({ error: 'Identificador de lead inválido.' });
+  }
+  next();
+};
+
+export const validateMessage = (req, res, next) => {
+  const { message, channel } = req.body;
+  if (typeof message !== 'string' || !message.trim() || message.length > 5000) {
+    return res.status(400).json({ error: 'A mensagem deve ter entre 1 e 5000 caracteres.' });
+  }
+  if (!['whatsapp', 'email', 'instagram', 'linkedin'].includes(channel)) {
+    return res.status(400).json({ error: 'Canal de mensagem inválido.' });
+  }
+  req.body.message = message.trim();
   next();
 };

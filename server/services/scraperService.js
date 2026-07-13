@@ -135,6 +135,8 @@ function generateMockLeads(query, city) {
     // Capitalize first letters
     companyName = companyName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
+    const slugName = companyName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
+
     const phoneDdd = {
       'são paulo': '11', 'rio de janeiro': '21', 'belo horizonte': '31', 
       'porto alegre': '51', 'curitiba': '41', 'salvador': '71'
@@ -173,8 +175,6 @@ function generateMockLeads(query, city) {
     const neighborhood = localNeighborhoods[Math.floor(Math.random() * localNeighborhoods.length)];
     const street = ['Rua Augusta', 'Av. Paulista', 'Rua das Flores', 'Av. Getúlio Vargas', 'Av. Brasil', 'Rua Amazonas'][Math.floor(Math.random() * 6)];
     const addressNumber = Math.floor(10 + Math.random() * 2500);
-    
-    const slugName = companyName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
 
     // Add coordinates offset
     const lat = parseFloat((center.lat + (Math.random() - 0.5) * 0.05).toFixed(6));
@@ -199,7 +199,8 @@ function generateMockLeads(query, city) {
       segment: matched.name,
       phone: fullPhone,
       whatsapp: `55${cleanPhone}`,
-      email: `contato@${slugName}.com.br`,
+      // Demo records must never be mistaken for verified contact channels.
+      email: '',
       website: website,
       instagram: instagram,
       facebook: facebook,
@@ -298,9 +299,9 @@ async function searchRealPlaces(query, city, apiKey) {
         segment: query,
         phone: phone,
         whatsapp: whatsapp,
-        email: `contato@${slugName}.com.br`, // Mocked default email if website is unknown
+        email: '',
         website: website,
-        instagram: `@${slugName}`,
+        instagram: '',
         facebook: '',
         city: cleanCity,
         state: state,

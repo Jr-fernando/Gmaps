@@ -3,6 +3,7 @@ import {
   Search, MapPin, Database, CheckCircle, Globe, Instagram, Mail, Phone, 
   ShieldAlert, Star, Clock, Copy, Check, Eye, ChevronRight, AlertCircle, HelpCircle
 } from 'lucide-react';
+import { leadService, settingsService } from '../services/api';
 
 const MOCK_LOGS = [
   'Conectando aos motores de busca locais...',
@@ -47,10 +48,9 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
 
   // Fetch settings to check if Places API is configured
   useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
+    settingsService.getSettings()
       .then(data => {
-        if (!data.google_places_api_key || data.google_places_api_key.trim() === '') {
+        if (!data.google_places_api_key_configured) {
           setIsPlacesKeyConfigured(false);
         } else {
           setIsPlacesKeyConfigured(true);
@@ -80,13 +80,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
     }, 1000);
 
     try {
-      const response = await fetch('/api/leads/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, city })
-      });
-      
-      const data = await response.json();
+      const data = await leadService.searchLeads(query, city);
       
       // Stop logger and flush rest of the logs
       clearInterval(logIntervalRef.current);
@@ -130,10 +124,14 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
     }
   };
 
-  const handleCopy = (text, key, index) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(`${key}_${index}`);
-    setTimeout(() => setCopiedKey(''), 2000);
+  const handleCopy = async (text, key, index) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(`${key}_${index}`);
+      setTimeout(() => setCopiedKey(''), 2000);
+    } catch {
+      setLogs(prev => [...prev, 'Não foi possível copiar para a área de transferência.']);
+    }
   };
 
   useEffect(() => {

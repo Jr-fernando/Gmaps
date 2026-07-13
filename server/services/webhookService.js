@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { dbService } from './dbService.js';
+import { isSafeExternalUrl } from '../utils/validation.js';
 
 export const dispatchWebhookEvent = async (event, payload) => {
   try {
@@ -13,6 +14,10 @@ export const dispatchWebhookEvent = async (event, payload) => {
     if (!webhookUrl || webhookUrl.trim() === '') {
       return;
     }
+    if (!isSafeExternalUrl(webhookUrl)) {
+      console.error('[Webhook Dispatcher] URL de webhook bloqueada por segurança.');
+      return;
+    }
 
     console.log(`[Webhook Dispatcher] Enviando evento '${event}' para: ${webhookUrl}...`);
     
@@ -20,7 +25,7 @@ export const dispatchWebhookEvent = async (event, payload) => {
       event,
       timestamp: new Date().toISOString(),
       data: payload
-    }, { timeout: 3000 })
+    }, { timeout: 3000, maxRedirects: 0 })
     .catch(err => {
       console.error(`[Webhook Dispatcher Error] Falha ao entregar '${event}':`, err.message);
     });

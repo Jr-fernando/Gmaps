@@ -1,93 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { Save, Key, Sliders, Share2, Info } from 'lucide-react';
+import React from 'react';
+import { Key, Sliders, Share2, Info } from 'lucide-react';
+import useSettings from '../hooks/useSettings';
+import Button from '../components/common/Button';
+import Input from '../components/common/Input';
+import Card from '../components/common/Card';
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState({
-    gemini_api_key: '',
-    openai_api_key: '',
-    claude_api_key: '',
-    google_places_api_key: '',
-    whatsapp_webhook_url: '',
-    telegram_webhook_url: '',
-    notion_api_key: '',
-    notion_database_id: '',
-    google_sheets_url: '',
-    follow_up_day_2: '',
-    follow_up_day_5: '',
-    follow_up_day_10: '',
-    fast_follow_up_mode: 'false',
-    webhook_url_new_lead: '',
-    webhook_url_status_changed: '',
-    webhook_url_message_sent: '',
-    webhook_url_proposal_sent: ''
-  });
-  
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-
-  useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => {
-        setSettings(prev => ({ ...prev, ...data }));
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Erro ao carregar configurações:', err);
-        setLoading(false);
-      });
-  }, []);
-
-  const handleChange = (key, value) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-  };
-
-  const handleTestWebhook = async (event, url) => {
-    if (!url) {
-      alert('Por favor, insira a URL antes de realizar o teste.');
-      return;
-    }
-    try {
-      const res = await fetch('/api/settings/test-webhook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event, url })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(`✓ Webhook enviado com sucesso! Evento: ${event}`);
-      } else {
-        alert(`❌ Falha no webhook: ${data.error}`);
-      }
-    } catch(err) {
-      alert(`❌ Erro ao disparar webhook: ${err.message}`);
-    }
-  };
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setSuccessMsg('');
-
-    try {
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-      const data = await response.json();
-      if (data.success) {
-        setSuccessMsg('Configurações salvas com sucesso!');
-        setTimeout(() => setSuccessMsg(''), 4000);
-      }
-    } catch (err) {
-      console.error('Erro ao salvar configurações:', err);
-      alert('Erro ao salvar as configurações.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const {
+    settings,
+    loading,
+    saving,
+    successMsg,
+    handleChange,
+    handleTestWebhook,
+    handleSave
+  } = useSettings();
 
   if (loading) {
     return (
@@ -102,7 +29,7 @@ export default function SettingsPage() {
       <form onSubmit={handleSave}>
         
         {/* API Credentials */}
-        <div className="glass-card settings-section">
+        <Card className="settings-section">
           <h3 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Key size={18} /> Credenciais e Chaves de API
           </h3>
@@ -111,54 +38,42 @@ export default function SettingsPage() {
           </p>
 
           <div className="settings-row">
-            <div className="input-group">
-              <label className="input-label">Gemini API Key</label>
-              <input
-                type="password"
-                placeholder="AIzaSy..."
-                className="input-field"
-                value={settings.gemini_api_key || ''}
-                onChange={(e) => handleChange('gemini_api_key', e.target.value)}
-              />
-            </div>
-            <div className="input-group">
-              <label className="input-label">OpenAI API Key</label>
-              <input
-                type="password"
-                placeholder="sk-..."
-                className="input-field"
-                value={settings.openai_api_key || ''}
-                onChange={(e) => handleChange('openai_api_key', e.target.value)}
-              />
-            </div>
+            <Input 
+              type="password"
+              label="Gemini API Key"
+              placeholder="AIzaSy..."
+              value={settings.gemini_api_key}
+              onChange={(e) => handleChange('gemini_api_key', e.target.value)}
+            />
+            <Input 
+              type="password"
+              label="OpenAI API Key"
+              placeholder="sk-..."
+              value={settings.openai_api_key}
+              onChange={(e) => handleChange('openai_api_key', e.target.value)}
+            />
           </div>
 
           <div className="settings-row">
-            <div className="input-group">
-              <label className="input-label">Claude (Anthropic) API Key</label>
-              <input
-                type="password"
-                placeholder="sk-ant-..."
-                className="input-field"
-                value={settings.claude_api_key || ''}
-                onChange={(e) => handleChange('claude_api_key', e.target.value)}
-              />
-            </div>
-            <div className="input-group">
-              <label className="input-label">Google Places API Key</label>
-              <input
-                type="password"
-                placeholder="Chave de busca do Google Maps..."
-                className="input-field"
-                value={settings.google_places_api_key || ''}
-                onChange={(e) => handleChange('google_places_api_key', e.target.value)}
-              />
-            </div>
+            <Input 
+              type="password"
+              label="Claude (Anthropic) API Key"
+              placeholder="sk-ant-..."
+              value={settings.claude_api_key}
+              onChange={(e) => handleChange('claude_api_key', e.target.value)}
+            />
+            <Input 
+              type="password"
+              label="Google Places API Key"
+              placeholder="Chave de busca do Google Maps..."
+              value={settings.google_places_api_key}
+              onChange={(e) => handleChange('google_places_api_key', e.target.value)}
+            />
           </div>
-        </div>
+        </Card>
 
         {/* Prospecting Rules */}
-        <div className="glass-card settings-section">
+        <Card className="settings-section">
           <h3 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sliders size={18} /> Templates de Prospecção & Automação
           </h3>
@@ -168,35 +83,29 @@ export default function SettingsPage() {
             <span>Use os marcadores <strong>[Nome]</strong> (nome do lead) e <strong>[Empresa]</strong> (nome da empresa) nos templates. Eles serão substituídos dinamicamente!</span>
           </div>
 
-          <div className="input-group" style={{ marginBottom: '16px' }}>
-            <label className="input-label">Mensagem de Cobrança 1 (D+2 dias)</label>
-            <textarea
-              className="message-textarea"
-              style={{ height: '90px' }}
-              value={settings.follow_up_day_2 || ''}
-              onChange={(e) => handleChange('follow_up_day_2', e.target.value)}
-            />
-          </div>
+          <Input 
+            textarea
+            label="Mensagem de Cobrança 1 (D+2 dias)"
+            value={settings.follow_up_day_2}
+            onChange={(e) => handleChange('follow_up_day_2', e.target.value)}
+            style={{ height: '90px', marginBottom: '16px' }}
+          />
 
-          <div className="input-group" style={{ marginBottom: '16px' }}>
-            <label className="input-label">Mensagem de Cobrança 2 (D+5 dias)</label>
-            <textarea
-              className="message-textarea"
-              style={{ height: '90px' }}
-              value={settings.follow_up_day_5 || ''}
-              onChange={(e) => handleChange('follow_up_day_5', e.target.value)}
-            />
-          </div>
+          <Input 
+            textarea
+            label="Mensagem de Cobrança 2 (D+5 dias)"
+            value={settings.follow_up_day_5}
+            onChange={(e) => handleChange('follow_up_day_5', e.target.value)}
+            style={{ height: '90px', marginBottom: '16px' }}
+          />
 
-          <div className="input-group" style={{ marginBottom: '20px' }}>
-            <label className="input-label">Mensagem de Cobrança 3 (D+10 dias)</label>
-            <textarea
-              className="message-textarea"
-              style={{ height: '90px' }}
-              value={settings.follow_up_day_10 || ''}
-              onChange={(e) => handleChange('follow_up_day_10', e.target.value)}
-            />
-          </div>
+          <Input 
+            textarea
+            label="Mensagem de Cobrança 3 (D+10 dias)"
+            value={settings.follow_up_day_10}
+            onChange={(e) => handleChange('follow_up_day_10', e.target.value)}
+            style={{ height: '90px', marginBottom: '20px' }}
+          />
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
             <div>
@@ -213,10 +122,10 @@ export default function SettingsPage() {
               <option value="true">Ativado (Minutos)</option>
             </select>
           </div>
-        </div>
+        </Card>
 
         {/* Webhooks / Integrations */}
-        <div className="glass-card settings-section">
+        <Card className="settings-section">
           <h3 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Share2 size={18} /> Integrações Externas & Webhooks de Automação
           </h3>
@@ -236,14 +145,13 @@ export default function SettingsPage() {
                   value={settings.webhook_url_new_lead || ''}
                   onChange={(e) => handleChange('webhook_url_new_lead', e.target.value)}
                 />
-                <button 
+                <Button 
                   type="button" 
-                  className="btn-channel border"
-                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  variant="secondary"
                   onClick={() => handleTestWebhook('NEW_LEAD', settings.webhook_url_new_lead)}
                 >
                   Testar
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -258,14 +166,13 @@ export default function SettingsPage() {
                   value={settings.webhook_url_status_changed || ''}
                   onChange={(e) => handleChange('webhook_url_status_changed', e.target.value)}
                 />
-                <button 
+                <Button 
                   type="button" 
-                  className="btn-channel border"
-                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  variant="secondary"
                   onClick={() => handleTestWebhook('STATUS_CHANGED', settings.webhook_url_status_changed)}
                 >
                   Testar
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -282,19 +189,18 @@ export default function SettingsPage() {
                   value={settings.webhook_url_message_sent || ''}
                   onChange={(e) => handleChange('webhook_url_message_sent', e.target.value)}
                 />
-                <button 
+                <Button 
                   type="button" 
-                  className="btn-channel border"
-                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  variant="secondary"
                   onClick={() => handleTestWebhook('MESSAGE_SENT', settings.webhook_url_message_sent)}
                 >
                   Testar
-                </button>
+                </Button>
               </div>
             </div>
 
             <div className="input-group">
-              <label className="input-label">Ao Gerar Proposta (PROPOSAL_SENT)</label>
+              <label className="input-label">Ao Enviar Proposta (PROPOSAL_SENT)</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
@@ -304,90 +210,29 @@ export default function SettingsPage() {
                   value={settings.webhook_url_proposal_sent || ''}
                   onChange={(e) => handleChange('webhook_url_proposal_sent', e.target.value)}
                 />
-                <button 
+                <Button 
                   type="button" 
-                  className="btn-channel border"
-                  style={{ padding: '0 16px', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                  variant="secondary"
                   onClick={() => handleTestWebhook('PROPOSAL_SENT', settings.webhook_url_proposal_sent)}
                 >
                   Testar
-                </button>
+                </Button>
               </div>
             </div>
           </div>
+        </Card>
 
-          <div className="settings-row" style={{ marginTop: '24px' }}>
-            <div className="input-group">
-              <label className="input-label">WhatsApp Disparador Webhook URL (Legado/Geral)</label>
-              <input
-                type="text"
-                placeholder="https://hook.us1.make.com/..."
-                className="input-field"
-                value={settings.whatsapp_webhook_url || ''}
-                onChange={(e) => handleChange('whatsapp_webhook_url', e.target.value)}
-              />
-            </div>
-            <div className="input-group">
-              <label className="input-label">Telegram Notification Webhook URL</label>
-              <input
-                type="text"
-                placeholder="https://api.telegram.org/bot..."
-                className="input-field"
-                value={settings.telegram_webhook_url || ''}
-                onChange={(e) => handleChange('telegram_webhook_url', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="settings-row">
-            <div className="input-group">
-              <label className="input-label">Notion Integration Token</label>
-              <input
-                type="password"
-                placeholder="secret_..."
-                className="input-field"
-                value={settings.notion_api_key || ''}
-                onChange={(e) => handleChange('notion_api_key', e.target.value)}
-              />
-            </div>
-            <div className="input-group">
-              <label className="input-label">Notion Database ID</label>
-              <input
-                type="text"
-                placeholder="ID da tabela no Notion..."
-                className="input-field"
-                value={settings.notion_database_id || ''}
-                onChange={(e) => handleChange('notion_database_id', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="input-group">
-            <label className="input-label">Google Sheets URL para Exportação</label>
-            <input
-              type="text"
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              className="input-field"
-              value={settings.google_sheets_url || ''}
-              onChange={(e) => handleChange('google_sheets_url', e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Submit Bar */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', alignItems: 'center', marginBottom: '40px' }}>
+        {/* Footer Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', alignItems: 'center', marginTop: '24px' }}>
           {successMsg && (
-            <span style={{ color: 'var(--color-success)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+            <span style={{ color: 'var(--color-success)', fontWeight: '600', fontSize: '0.85rem' }}>
               {successMsg}
             </span>
           )}
-          
-          <button type="submit" className="btn-save-settings" disabled={saving}>
-            <Save size={18} />
-            {saving ? 'Salvando...' : 'Salvar Configurações'}
-          </button>
+          <Button variant="save" type="submit" loading={saving}>
+            Salvar Todas as Configurações
+          </Button>
         </div>
-
       </form>
     </div>
   );

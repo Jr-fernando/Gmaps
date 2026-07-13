@@ -1,14 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import { dbGet, dbRun, dbAll } from '../db.js';
-
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const isSupabaseEnabled = supabaseUrl !== '' && supabaseKey !== '';
-
-let supabase = null;
-if (isSupabaseEnabled) {
-  supabase = createClient(supabaseUrl, supabaseKey);
-}
+import { dbGet, dbRun, dbAll, isSupabaseEnabled, supabase } from '../db.js';
+import { parseJson } from '../utils/json.js';
 
 export const leadRepository = {
   isSupabase: () => isSupabaseEnabled,
@@ -17,58 +8,79 @@ export const leadRepository = {
   // 1. Obter estatísticas do painel
   getStats: async () => {
     if (isSupabaseEnabled) {
-      const { count: totalLeads } = await supabase.from('leads').select('*', { count: 'exact', head: true });
-      const todayStr = new Date().toISOString().slice(0, 10);
-      
-      const { count: newLeadsToday } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .or(`created_at.gte.${todayStr}T00:00:00Z,status.eq.Novo Lead`);
+      try {
+        const { count: totalLeads, error: errTotal } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+        if (errTotal) throw errTotal;
 
-      const { count: messagesSent } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .not('status', 'in', '("Novo Lead","Entrar em contato")');
+        const todayStr = new Date().toISOString().slice(0, 10);
+        
+        const { count: newLeadsToday, error: errNew } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true })
+          .or(`created_at.gte.${todayStr}T00:00:00Z,status.eq.Novo Lead`);
+        if (errNew) throw errNew;
 
-      const { count: replies } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['Respondeu', 'Negociação', 'Proposta enviada', 'Cliente']);
+        const { count: messagesSent, error: errSent } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true })
+          .not('status', 'in', '("Novo Lead","Entrar em contato")');
+        if (errSent) throw errSent;
 
-      const { count: closed } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'Cliente');
+        const { count: replies, error: errReplies } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true })
+          .in('status', ['Respondeu', 'Negociação', 'Proposta enviada', 'Cliente']);
+        if (errReplies) throw errReplies;
 
-      const { count: lost } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'Perdido');
+        const { count: closed, error: errClosed } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'Cliente');
+        if (errClosed) throw errClosed;
 
-      const { data: segmentData } = await supabase.from('leads').select('segment');
-      
-      const segmentCounts = {};
-      if (segmentData) {
-        segmentData.forEach(r => {
-          const seg = r.segment || 'Geral';
-          segmentCounts[seg] = (segmentCounts[seg] || 0) + 1;
-        });
+        const { count: lost, error: errLost } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'Perdido');
+        if (errLost) throw errLost;
+
+        const { data: segmentData, error: errSegment } = await supabase.from('leads').select('segment');
+        if (errSegment) throw errSegment;
+        
+        const segmentCounts = {};
+        if (segmentData) {
+          segmentData.forEach(r => {
+            const seg = r.segment || 'Geral';
+            segmentCounts[seg] = (segmentCounts[seg] || 0) + 1;
+          });
+        }
+        
+        const segmentsRank = Object.entries(segmentCounts)
+          .map(([segment, count]) => ({ segment, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        return {
+          totalLeads: totalLeads || 0,
+          newLeads: newLeadsToday || 0,
+          messagesSent: messagesSent || 0,
+          replies: replies || 0,
+          closed: closed || 0,
+          lost: lost || 0,
+          segmentsRank
+        };
+      } catch (err) {
+        console.error('[Supabase getStats Error]:', err.message);
+        return {
+          totalLeads: 0,
+          newLeads: 0,
+          messagesSent: 0,
+          replies: 0,
+          closed: 0,
+          lost: 0,
+          segmentsRank: []
+        };
       }
-      
-      const segmentsRank = Object.entries(segmentCounts)
-        .map(([segment, count]) => ({ segment, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      return {
-        totalLeads: totalLeads || 0,
-        newLeads: newLeadsToday || 0,
-        messagesSent: messagesSent || 0,
-        replies: replies || 0,
-        closed: closed || 0,
-        lost: lost || 0,
-        segmentsRank
-      };
     } else {
       const totalLeads = await dbGet('SELECT COUNT(*) as count FROM leads');
       const newLeads = await dbGet("SELECT COUNT(*) as count FROM leads WHERE date(created_at) = date('now') OR status = 'Novo Lead'");
@@ -213,11 +225,12 @@ export const leadRepository = {
       
       return {
         ...lead,
-        website_analysis: typeof lead.website_analysis === 'string' ? JSON.parse(lead.website_analysis) : lead.website_analysis || {},
-        social_analysis: typeof lead.social_analysis === 'string' ? JSON.parse(lead.social_analysis) : lead.social_analysis || {},
-        reviews: typeof lead.reviews === 'string' ? JSON.parse(lead.reviews) : lead.reviews || [],
-        gallery: typeof lead.gallery === 'string' ? JSON.parse(lead.gallery) : lead.gallery || [],
-        history: typeof lead.history === 'string' ? JSON.parse(lead.history) : lead.history || [],
+        website_analysis: parseJson(lead.website_analysis, {}),
+        social_analysis: parseJson(lead.social_analysis, {}),
+        reviews: parseJson(lead.reviews, []),
+        gallery: parseJson(lead.gallery, []),
+        history: parseJson(lead.history, []),
+        labels: parseJson(lead.labels, []),
         followUps: followUps || []
       };
     } else {
@@ -231,11 +244,12 @@ export const leadRepository = {
 
       return {
         ...lead,
-        website_analysis: JSON.parse(lead.website_analysis || '{}'),
-        social_analysis: JSON.parse(lead.social_analysis || '{}'),
-        reviews: JSON.parse(lead.reviews || '[]'),
-        gallery: JSON.parse(lead.gallery || '[]'),
-        history: JSON.parse(lead.history || '[]'),
+        website_analysis: parseJson(lead.website_analysis, {}),
+        social_analysis: parseJson(lead.social_analysis, {}),
+        reviews: parseJson(lead.reviews, []),
+        gallery: parseJson(lead.gallery, []),
+        history: parseJson(lead.history, []),
+        labels: parseJson(lead.labels, []),
         followUps
       };
     }
@@ -355,10 +369,12 @@ export const leadRepository = {
   updateLeadStatus: async (id, status) => {
     const now = new Date().toISOString();
     if (isSupabaseEnabled) {
-      const { error } = await supabase.from('leads').update({ status, updated_at: now }).eq('id', id);
+      const { data, error } = await supabase.from('leads').update({ status, updated_at: now }).eq('id', id).select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('Lead não encontrado');
     } else {
-      await dbRun('UPDATE leads SET status = ?, updated_at = ? WHERE id = ?', [status, now, id]);
+      const result = await dbRun('UPDATE leads SET status = ?, updated_at = ? WHERE id = ?', [status, now, id]);
+      if (!result.changes) throw new Error('Lead não encontrado');
     }
   },
 
@@ -366,7 +382,7 @@ export const leadRepository = {
   updateLeadCrm: async (id, crmData) => {
     const now = new Date().toISOString();
     if (isSupabaseEnabled) {
-      const { error } = await supabase.from('leads').update({
+      const { data, error } = await supabase.from('leads').update({
         owner: crmData.owner,
         value_negotiated: parseFloat(crmData.value_negotiated || 0),
         next_action: crmData.next_action,
@@ -374,17 +390,18 @@ export const leadRepository = {
         status: crmData.status,
         first_contact_date: crmData.first_contact_date,
         last_contact_date: crmData.last_contact_date,
-        history: typeof crmData.history === 'object' ? crmData.history : JSON.parse(crmData.history || '[]'),
+        history: typeof crmData.history === 'object' ? crmData.history : parseJson(crmData.history, []),
         proposal_text: crmData.proposal_text,
         proposal_sent: crmData.proposal_sent ? true : false,
-        labels: typeof crmData.labels === 'object' ? crmData.labels : JSON.parse(crmData.labels || '[]'),
+        labels: typeof crmData.labels === 'object' ? crmData.labels : parseJson(crmData.labels, []),
         probability: parseInt(crmData.probability || 50),
         next_contact_date: crmData.next_contact_date,
         updated_at: now
-      }).eq('id', id);
+      }).eq('id', id).select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('Lead não encontrado');
     } else {
-      await dbRun(
+      const result = await dbRun(
         `UPDATE leads SET owner = ?, value_negotiated = ?, next_action = ?, notes = ?, status = ?, first_contact_date = ?, last_contact_date = ?, history = ?, proposal_text = ?, proposal_sent = ?, labels = ?, probability = ?, next_contact_date = ?, updated_at = ? WHERE id = ?`,
         [
           crmData.owner,
@@ -404,6 +421,7 @@ export const leadRepository = {
           id
         ]
       );
+      if (!result.changes) throw new Error('Lead não encontrado');
     }
   },
 
@@ -411,29 +429,34 @@ export const leadRepository = {
   updateLeadAi: async (id, firstMessage, aiReport) => {
     const now = new Date().toISOString();
     if (isSupabaseEnabled) {
-      const { error } = await supabase.from('leads').update({
+      const { data, error } = await supabase.from('leads').update({
         first_message: firstMessage,
         ai_report: aiReport,
         updated_at: now
-      }).eq('id', id);
+      }).eq('id', id).select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('Lead não encontrado');
     } else {
-      await dbRun(
+      const result = await dbRun(
         'UPDATE leads SET first_message = ?, ai_report = ?, updated_at = ? WHERE id = ?',
         [firstMessage, aiReport, now, id]
       );
+      if (!result.changes) throw new Error('Lead não encontrado');
     }
   },
 
   // 9. Deletar Lead
   deleteLead: async (id) => {
     if (isSupabaseEnabled) {
-      await supabase.from('follow_ups').delete().eq('lead_id', id);
-      const { error } = await supabase.from('leads').delete().eq('id', id);
+      const { error: followUpsError } = await supabase.from('follow_ups').delete().eq('lead_id', id);
+      if (followUpsError) throw followUpsError;
+      const { data, error } = await supabase.from('leads').delete().eq('id', id).select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('Lead não encontrado');
     } else {
-      await dbRun('DELETE FROM leads WHERE id = ?', [id]);
       await dbRun('DELETE FROM follow_ups WHERE lead_id = ?', [id]);
+      const result = await dbRun('DELETE FROM leads WHERE id = ?', [id]);
+      if (!result.changes) throw new Error('Lead não encontrado');
     }
   }
 };

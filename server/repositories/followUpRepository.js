@@ -1,14 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { dbGet, dbRun, dbAll } from '../db.js';
-
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const isSupabaseEnabled = supabaseUrl !== '' && supabaseKey !== '';
-
-let supabase = null;
-if (isSupabaseEnabled) {
-  supabase = createClient(supabaseUrl, supabaseKey);
-}
+import { dbGet, dbRun, dbAll, isSupabaseEnabled, supabase } from '../db.js';
 
 export const followUpRepository = {
   // 1. Obter follow-ups pendentes/agendados

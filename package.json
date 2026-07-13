@@ -2,6 +2,9 @@
   "name": "agentic-leads-workspace",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <25"
+  },
   "workspaces": [
     "client",
     "server"

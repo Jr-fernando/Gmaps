@@ -4,8 +4,9 @@ import { searchCompanies } from './services/scraperService.js';
 import { analyzePresence } from './services/presenceService.js';
 import { generateAiReport, generateProposalText, chatWithLeadAi } from './services/aiService.js';
 import { processPendingFollowUps } from './services/cronService.js';
-import { validateLeadSearch, validateCrmUpdate } from './validators/validator.js';
+import { validateLeadSearch, validateCrmUpdate, validateLeadId, validateMessage } from './validators/validator.js';
 import { dispatchWebhookEvent } from './services/webhookService.js';
+import { isSafeExternalUrl } from './utils/validation.js';
 
 const router = express.Router();
 
@@ -74,10 +75,11 @@ router.get('/dashboard/stats', async (req, res) => {
       ...stats,
       responseRate: responseRate || 34.5, // fallback for empty db aesthetics
       conversionRate: conversionRate || 12.0, // fallback for empty db aesthetics
-      valueSold: stats.closed * 2500, // Estimated value
+      valueSold: (stats.closed || 0) * 2500, // Safe calculation
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[API Stats Error]:', err.message);
+    res.status(500).json({ error: 'Erro ao processar estatísticas do painel.' });
   }
 });
 
@@ -161,7 +163,7 @@ router.get('/leads', async (req, res) => {
 });
 
 // 4. Lead details
-router.get('/leads/:id', async (req, res) => {
+router.get('/leads/:id', validateLeadId, async (req, res) => {
   try {
     const lead = await dbService.leads.getLeadById(req.params.id);
     if (!lead) {
@@ -174,7 +176,7 @@ router.get('/leads/:id', async (req, res) => {
 });
 
 // 5. Update lead status
-router.put('/leads/:id/status', validateCrmUpdate, async (req, res) => {
+router.put('/leads/:id/status', validateLeadId, validateCrmUpdate, async (req, res) => {
   const { status } = req.body;
   if (!status) {
     return res.status(400).json({ error: 'Status é obrigatório' });
@@ -194,7 +196,7 @@ router.put('/leads/:id/status', validateCrmUpdate, async (req, res) => {
 });
 
 // 6. Update complete CRM lead details
-router.put('/leads/:id/crm', validateCrmUpdate, async (req, res) => {
+router.put('/leads/:id/crm', validateLeadId, validateCrmUpdate, async (req, res) => {
   const { 
     owner, value_negotiated, next_action, notes, status,
     first_contact_date, last_contact_date, history, proposal_text, proposal_sent,
@@ -230,7 +232,7 @@ router.put('/leads/:id/crm', validateCrmUpdate, async (req, res) => {
 });
 
 // 7. Delete a lead
-router.delete('/leads/:id', async (req, res) => {
+router.delete('/leads/:id', validateLeadId, async (req, res) => {
   try {
     await dbService.leads.deleteLead(req.params.id);
     res.json({ success: true, message: 'Lead deletado com sucesso' });
@@ -240,7 +242,7 @@ router.delete('/leads/:id', async (req, res) => {
 });
 
 // 8. Regenerate prospecting message
-router.post('/leads/:id/generate-message', async (req, res) => {
+router.post('/leads/:id/generate-message', validateLeadId, async (req, res) => {
   try {
     const lead = await dbService.leads.getLeadById(req.params.id);
     if (!lead) {
@@ -258,7 +260,7 @@ router.post('/leads/:id/generate-message', async (req, res) => {
 });
 
 // 9. Generate proposal
-router.post('/leads/:id/proposal', async (req, res) => {
+router.post('/leads/:id/proposal', validateLeadId, async (req, res) => {
   const { services } = req.body;
   if (!services || !Array.isArray(services)) {
     return res.status(400).json({ error: 'Lista de serviços é obrigatória' });
@@ -309,7 +311,7 @@ router.post('/leads/:id/proposal', async (req, res) => {
 });
 
 // 10. Send message / Trigger webhook
-router.post('/leads/:id/send-message', async (req, res) => {
+router.post('/leads/:id/send-message', validateLeadId, validateMessage, async (req, res) => {
   const { message, channel } = req.body;
   
   try {
@@ -361,7 +363,7 @@ router.post('/leads/:id/send-message', async (req, res) => {
 });
 
 // 11. Chat with lead AI
-router.post('/leads/:id/chat', async (req, res) => {
+router.post('/leads/:id/chat', validateLeadId, async (req, res) => {
   const { message, history } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Mensagem é obrigatória' });
@@ -393,7 +395,7 @@ router.post('/automation/trigger', async (req, res) => {
 // 13. Settings Endpoints
 router.get('/settings', async (req, res) => {
   try {
-    const settings = await dbService.settings.getSettings();
+    const settings = await dbService.settings.getPublicSettings();
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -402,6 +404,9 @@ router.get('/settings', async (req, res) => {
 
 router.post('/settings', async (req, res) => {
   const settingsObj = req.body;
+  if (!settingsObj || typeof settingsObj !== 'object' || Array.isArray(settingsObj)) {
+    return res.status(400).json({ error: 'Configurações inválidas.' });
+  }
   try {
     await dbService.settings.saveSettings(settingsObj);
     res.json({ success: true, message: 'Configurações salvas com sucesso!' });
@@ -415,6 +420,9 @@ router.post('/settings/test-webhook', async (req, res) => {
   const { event, url } = req.body;
   if (!url) {
     return res.status(400).json({ error: 'URL do webhook é obrigatória' });
+  }
+  if (!isSafeExternalUrl(url)) {
+    return res.status(400).json({ error: 'URL de webhook inválida ou não permitida.' });
   }
   
   try {

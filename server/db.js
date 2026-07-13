@@ -1,23 +1,54 @@
 import sqlite3 from 'sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+// Garantir carregamento das variáveis de ambiente
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const dbPath = join(__dirname, 'database.sqlite');
 
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Erro ao conectar ao banco de dados SQLite:', err.message);
-  } else {
-    console.log('Conectado com sucesso ao banco de dados SQLite.');
+// Configuração Centralizada do Supabase
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+export const isSupabaseEnabled = supabaseUrl !== '' && supabaseKey !== '';
+
+export let supabase = null;
+if (isSupabaseEnabled) {
+  supabase = createClient(supabaseUrl, supabaseKey);
+}
+
+let db = null;
+const getDb = () => {
+  if (isSupabaseEnabled) {
+    throw new Error('SQLite não deve ser inicializado quando o Supabase está ativo.');
   }
-});
+  if (db) return db;
+
+  let resolvedDbPath = dbPath;
+  // Se estiver na Vercel e o Supabase estiver inativo, usa a pasta /tmp que possui permissão de escrita
+  if (process.env.VERCEL) {
+    resolvedDbPath = join('/tmp', 'database.sqlite');
+  }
+
+  db = new sqlite3.Database(resolvedDbPath, (err) => {
+    if (err) {
+      console.error('Erro ao conectar ao banco de dados SQLite:', err.message);
+    } else {
+      console.log(`Conectado com sucesso ao banco de dados SQLite em: ${resolvedDbPath}`);
+    }
+  });
+  db.run('PRAGMA foreign_keys = ON');
+  return db;
+};
 
 // Helper functions using Promises
 export const dbRun = (sql, params = []) => {
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
+    getDb().run(sql, params, function (err) {
       if (err) {
         reject(err);
       } else {
@@ -29,7 +60,7 @@ export const dbRun = (sql, params = []) => {
 
 export const dbGet = (sql, params = []) => {
   return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
+    getDb().get(sql, params, (err, row) => {
       if (err) {
         reject(err);
       } else {
@@ -41,7 +72,7 @@ export const dbGet = (sql, params = []) => {
 
 export const dbAll = (sql, params = []) => {
   return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
+    getDb().all(sql, params, (err, rows) => {
       if (err) {
         reject(err);
       } else {
@@ -53,7 +84,12 @@ export const dbAll = (sql, params = []) => {
 
 // Initialize schema
 export const initDb = async () => {
-  console.log('Inicializando tabelas do banco de dados...');
+  if (isSupabaseEnabled) {
+    console.log('[Database] Supabase está ativo. Pulando inicialização do banco SQLite.');
+    return;
+  }
+
+  console.log('Inicializando tabelas do banco de dados SQLite...');
   
   // Leads table
   await dbRun(`
@@ -108,8 +144,8 @@ export const initDb = async () => {
   const addColumnSafe = async (columnName, definition) => {
     try {
       await dbRun(`ALTER TABLE leads ADD COLUMN ${columnName} ${definition}`);
-    } catch (e) {
-      // Column already exists, ignore error
+  } catch (e) {
+      if (!String(e.message).includes('duplicate column name')) throw e;
     }
   };
   await addColumnSafe('owner', 'TEXT');
@@ -133,7 +169,7 @@ export const initDb = async () => {
   try {
     await dbRun(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_name_city ON leads(name, city)`);
   } catch (e) {
-    // Ignore index creation error
+    if (!String(e.message).includes('already exists')) throw e;
   }
 
   // Follow-ups table

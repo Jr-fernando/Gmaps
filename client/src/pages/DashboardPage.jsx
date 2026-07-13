@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Users, Send, MessageSquare, DollarSign } from 'lucide-react';
+import { dashboardService } from '../services/api';
+import StatCard from '../components/dashboard/StatCard';
+import { formatCurrency } from '../utils/formatters';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({
@@ -16,8 +19,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/dashboard/stats')
-      .then(res => res.json())
+    dashboardService.getStats()
       .then(data => {
         setStats(data);
         setLoading(false);
@@ -36,7 +38,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Find max segment count for percentage rendering
   const maxSegmentCount = stats.segmentsRank.length > 0 
     ? Math.max(...stats.segmentsRank.map(s => s.count)) 
     : 1;
@@ -45,51 +46,44 @@ export default function DashboardPage() {
     <div className="animate-fade-in">
       {/* Stats Cards Grid */}
       <div className="stats-grid">
-        <div className="glass-card stat-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span className="stat-label">Total de Leads</span>
-            <Users size={18} className="stat-icon" style={{ color: 'var(--accent-primary)' }} />
-          </div>
-          <span className="stat-value">{stats.totalLeads}</span>
-          <div className="stat-meta">
-            <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>+{stats.newLeads}</span>
-            <span>novos leads hoje</span>
-          </div>
-        </div>
+        <StatCard 
+          label="Total de Leads"
+          value={stats.totalLeads}
+          icon={<Users size={18} />}
+          meta={
+            <>
+              <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>+{stats.newLeads}</span> novos leads hoje
+            </>
+          }
+        />
 
-        <div className="glass-card stat-card info">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span className="stat-label">Abordados</span>
-            <Send size={18} style={{ color: 'var(--color-info)' }} />
-          </div>
-          <span className="stat-value">{stats.messagesSent}</span>
-          <div className="stat-meta">
-            <span>Sequências ativas</span>
-          </div>
-        </div>
+        <StatCard 
+          label="Abordados"
+          value={stats.messagesSent}
+          icon={<Send size={18} />}
+          className="info"
+          meta="Sequências ativas"
+        />
 
-        <div className="glass-card stat-card warning">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span className="stat-label">Taxa de Resposta</span>
-            <MessageSquare size={18} style={{ color: 'var(--color-warning)' }} />
-          </div>
-          <span className="stat-value">{stats.responseRate}%</span>
-          <div className="stat-meta">
-            <span>{stats.replies} contatos responderam</span>
-          </div>
-        </div>
+        <StatCard 
+          label="Taxa de Resposta"
+          value={`${stats.responseRate}%`}
+          icon={<MessageSquare size={18} />}
+          className="warning"
+          meta={`${stats.replies} contatos responderam`}
+        />
 
-        <div className="glass-card stat-card success">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span className="stat-label">Faturamento Estimado</span>
-            <DollarSign size={18} style={{ color: 'var(--color-success)' }} />
-          </div>
-          <span className="stat-value">R$ {stats.valueSold.toLocaleString('pt-BR')}</span>
-          <div className="stat-meta">
-            <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>{stats.conversionRate}%</span>
-            <span>de conversão ({stats.closed} fechados)</span>
-          </div>
-        </div>
+        <StatCard 
+          label="Faturamento Estimado"
+          value={formatCurrency(stats.valueSold)}
+          icon={<DollarSign size={18} />}
+          className="success"
+          meta={
+            <>
+              <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>{stats.conversionRate}%</span> de conversão ({stats.closed} fechados)
+            </>
+          }
+        />
       </div>
 
       {/* Main Graphs Panel */}
