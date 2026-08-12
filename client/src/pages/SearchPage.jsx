@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight, Building2, Check, ChevronDown, Clapperboard, Clock3, Globe2, Instagram, LoaderCircle,
   MapPin, MessageCircle, Search, SlidersHorizontal, Sparkles, Star, Target
@@ -15,7 +15,13 @@ const NEEDS = [
 
 const INITIAL = {
   query: '', city: 'São Paulo', region: '', radius: '15', needs: ['social_media'],
-  minReviews: '10', maxRating: '', onlyNoWebsite: false, onlyNoInstagram: false, limit: '20', sortMode: 'vulnerable'
+  minReviews: '10', maxRating: '', onlyNoWebsite: false, onlyNoInstagram: false,
+  excludeSaved: true, limit: '20', sortMode: 'vulnerable'
+};
+
+const SEARCH_SESSION_KEY = 'leadmap.active-search.v1';
+const readSearchSession = () => {
+  try { return JSON.parse(sessionStorage.getItem(SEARCH_SESSION_KEY) || '{}'); } catch { return {}; }
 };
 
 const SORT_OPTIONS = [
@@ -28,13 +34,16 @@ const SORT_OPTIONS = [
 const qualificationOf = (lead) => lead.website_analysis?.qualification || lead.social_analysis?.qualification || {};
 
 export default function SearchPage({ onSearchComplete, onSelectLead }) {
-  const [form, setForm] = useState(INITIAL);
-  const [advanced, setAdvanced] = useState(false);
+  const [initialSession] = useState(readSearchSession);
+  const [form, setForm] = useState(() => ({ ...INITIAL, ...(initialSession.form || {}) }));
+  const [advanced, setAdvanced] = useState(Boolean(initialSession.advanced));
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
-  const [summary, setSummary] = useState(null);
+  const [summary, setSummary] = useState(initialSession.summary || null);
   const [error, setError] = useState('');
   const [savedSearches, setSavedSearches] = useState([]);
+  const [activeSearchId, setActiveSearchId] = useState(initialSession.activeSearchId || '');
+  const resultsRef = useRef(null);
 
   const selectedNeeds = useMemo(() => NEEDS.filter((item) => form.needs.includes(item.id)), [form.needs]);
   const sortedResults = useMemo(() => {
@@ -54,14 +63,62 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   });
 
   useEffect(() => {
-    searchService.getSaved().then(setSavedSearches).catch(() => setSavedSearches([]));
-  }, []);
+    const savedPromise = searchService.getSaved().then(setSavedSearches).catch(() => setSavedSearches([]));
+    const activePromise = activeSearchId
+      ? searchService.getById(activeSearchId).then(({ leads }) => setResults(leads || [])).catch(() => setActiveSearchId(''))
+      : Promise.resolve();
+    Promise.all([savedPromise, activePromise]).catch(() => {});
+  }, [initialSession.activeSearchId]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SEARCH_SESSION_KEY, JSON.stringify({ form, advanced, summary, activeSearchId }));
+    } catch { /* The current search still works when browser storage is unavailable. */ }
+  }, [form, advanced, summary, activeSearchId]);
+
+  const openSavedSearch = async (item) => {
+    setError('');
+    setLoading(true);
+    try {
+      const data = await searchService.getById(item.id);
+      const restoredForm = {
+        ...INITIAL,
+        query: item.query || '',
+        city: item.city || '',
+        region: item.region || '',
+        needs: Array.isArray(item.needs) && item.needs.length ? item.needs : INITIAL.needs,
+        radius: String(item.radius || INITIAL.radius),
+        minReviews: String(item.minReviews ?? INITIAL.minReviews),
+        maxRating: item.maxRating === undefined || item.maxRating === null ? '' : String(item.maxRating),
+        onlyNoWebsite: Boolean(item.onlyNoWebsite),
+        onlyNoInstagram: Boolean(item.onlyNoInstagram),
+        excludeSaved: item.excludeSaved !== false,
+        limit: String(item.requested || INITIAL.limit),
+        sortMode: item.sortMode || INITIAL.sortMode,
+      };
+      setForm(restoredForm);
+      setResults(data.leads || []);
+      setActiveSearchId(item.id);
+      setSummary({
+        count: data.leads?.length || 0,
+        realData: true,
+        needs: restoredForm.needs.map((need) => NEEDS.find((entry) => entry.id === need)?.label || need),
+        requested: item.requested || data.leads?.length || 0,
+        shortfall: Math.max((item.requested || 0) - (data.leads?.length || 0), 0),
+        restored: true,
+      });
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    } catch (err) {
+      setError(err.message || 'Não foi possível reabrir essa busca.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const submit = async (event) => {
     event.preventDefault();
     setError('');
     setLoading(true);
-    setResults([]);
     try {
       const settings = await settingsService.getSettings().catch(() => ({}));
       const data = await leadService.searchLeads({
@@ -74,10 +131,12 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         maxRating: form.maxRating ? Number(form.maxRating) : undefined,
         onlyNoWebsite: form.onlyNoWebsite,
         onlyNoInstagram: form.onlyNoInstagram,
+        excludeSaved: form.excludeSaved,
         limit: Number(form.limit),
         sortMode: form.sortMode,
       });
       setResults(data.leads || []);
+      setActiveSearchId(data.searchId || '');
       setSummary({
         count: data.leads?.length || 0,
         realData: Boolean(settings.google_places_api_key_configured),
@@ -143,6 +202,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
             <label><span>Ordem dos resultados</span><select value={form.sortMode} onChange={(e) => update('sortMode', e.target.value)}>{SORT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
             <label className="check-field"><input type="checkbox" checked={form.onlyNoWebsite} onChange={(e) => update('onlyNoWebsite', e.target.checked)} /><span>Somente empresas sem site</span></label>
             <label className="check-field"><input type="checkbox" checked={form.onlyNoInstagram} onChange={(e) => update('onlyNoInstagram', e.target.checked)} /><span>Instagram não identificado</span></label>
+            <label className="check-field"><input type="checkbox" checked={form.excludeSaved} onChange={(e) => update('excludeSaved', e.target.checked)} /><span>Ocultar empresas já capturadas</span></label>
           </div>}
         </div>
 
@@ -153,7 +213,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         </div>
       </form>
 
-      {summary && !loading && <section className="search-results">
+      {summary && !loading && <section className="search-results" ref={resultsRef}>
         <div className="results-heading"><div><span className="eyebrow"><Check size={13} /> Busca concluída</span><h2>{summary.count} de {summary.requested} oportunidades encontradas</h2><p>{summary.shortfall ? `Foram encontrados ${summary.count} perfis únicos que atendem aos filtros. ` : ''}Você pode mudar a ordem abaixo sem refazer a busca.</p></div><span className={`source-badge ${summary.realData ? 'real' : ''}`}>{summary.realData ? 'Dados do Google Places' : 'Modo demonstração'}</span></div>
         <div className="results-toolbar"><label><span>Priorizar</span><select value={form.sortMode} onChange={(e) => update('sortMode', e.target.value)}>{SORT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><small>Vulnerabilidade é uma estimativa. Instagram precisa ser validado fora do Google Places.</small></div>
         <div className="results-list">
@@ -174,7 +234,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         <div className="saved-searches-title"><div><span className="eyebrow"><Clock3 size={13} /> Histórico salvo</span><h2>Buscas recentes</h2></div><span>{savedSearches.length} salvas</span></div>
         {savedSearches.length === 0 ? <p className="directory-empty">Suas buscas aparecerão aqui automaticamente.</p> : (
           <div className="saved-searches-list">{savedSearches.slice(0, 8).map((item) => (
-            <article key={item.id}><div><strong>{item.query}</strong><small>{item.city}{item.region ? ` · ${item.region}` : ''}</small></div><div className="saved-search-needs">{(item.needs || []).map((need) => <i key={need}>{NEEDS.find((entry) => entry.id === need)?.label || need}</i>)}</div><div><strong>{item.found}/{item.requested}</strong><small>{new Date(item.createdAt).toLocaleString('pt-BR')}</small></div></article>
+            <button type="button" key={item.id} onClick={() => openSavedSearch(item)}><div><strong>{item.query}</strong><small>{item.city}{item.region ? ` · ${item.region}` : ''}</small></div><div className="saved-search-needs">{(item.needs || []).map((need) => <i key={need}>{NEEDS.find((entry) => entry.id === need)?.label || need}</i>)}</div><div><strong>{item.found}/{item.requested}</strong><small>{new Date(item.createdAt).toLocaleString('pt-BR')}</small></div><ArrowRight size={16} /></button>
           ))}</div>
         )}
       </section>

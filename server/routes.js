@@ -99,17 +99,23 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
   
   try {
     console.log(`[API] Iniciando busca ativa para segmento '${query}' em '${city}'...`);
-    const leads = await searchCompanies(query, city, criteria);
+    const requestedLimit = criteria.limit;
+    const candidateLimit = criteria.excludeSaved ? Math.min(requestedLimit * 3, 100) : requestedLimit;
+    const leads = await searchCompanies(query, city, { ...criteria, limit: candidateLimit });
 
     const qualified = sortQualifiedLeads(leads.map((lead) => qualifyLead(lead, criteria.needs)), criteria.sortMode);
     const existingLeads = await dbService.leads.findLeadsByNamesAndCity(qualified.map((lead) => lead.name), city);
     const existingByName = new Map(existingLeads.map((lead) => [lead.name, lead]));
+    const candidatesToSave = (criteria.excludeSaved
+      ? qualified.filter((lead) => !existingByName.has(lead.name))
+      : qualified
+    ).slice(0, requestedLimit);
     const savedLeads = [];
     let newCount = 0;
 
     // Small batches keep Supabase responsive without creating a long sequential waterfall.
-    for (let index = 0; index < qualified.length; index += 8) {
-      const batch = qualified.slice(index, index + 8);
+    for (let index = 0; index < candidatesToSave.length; index += 8) {
+      const batch = candidatesToSave.slice(index, index + 8);
       const savedBatch = await Promise.all(batch.map(async (lead) => {
         const existing = existingByName.get(lead.name);
         if (existing) {
@@ -138,18 +144,27 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
       savedLeads.push(...savedBatch.filter(Boolean));
     }
 
-    const ordered = sortQualifiedLeads(savedLeads, criteria.sortMode).slice(0, criteria.limit);
+    const ordered = sortQualifiedLeads(savedLeads, criteria.sortMode).slice(0, requestedLimit);
+    let savedSearchId = null;
     try {
       const savedSearchesRaw = await dbService.settings.getSettingByKey('saved_searches');
       let savedSearches = [];
       try { savedSearches = JSON.parse(savedSearchesRaw || '[]'); } catch { savedSearches = []; }
+      savedSearchId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       savedSearches.unshift({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: savedSearchId,
         query,
         city,
         region: criteria.region || '',
         needs: criteria.needs,
-        requested: criteria.limit,
+        radius: criteria.radius,
+        minReviews: criteria.minReviews,
+        maxRating: criteria.maxRating,
+        onlyNoWebsite: criteria.onlyNoWebsite,
+        onlyNoInstagram: criteria.onlyNoInstagram,
+        excludeSaved: criteria.excludeSaved,
+        sortMode: criteria.sortMode,
+        requested: requestedLimit,
         found: ordered.length,
         leadIds: ordered.map((lead) => lead.id),
         createdAt: new Date().toISOString(),
@@ -161,10 +176,11 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
     res.json({
       message: `Busca finalizada. ${ordered.length} leads entregues e ${newCount} adicionados ao CRM.`,
       leads: ordered,
-      requested: criteria.limit,
+      requested: requestedLimit,
       found: ordered.length,
       newCount,
-      shortfall: Math.max(criteria.limit - ordered.length, 0),
+      searchId: savedSearchId,
+      shortfall: Math.max(requestedLimit - ordered.length, 0),
     });
   } catch (err) {
     console.error('[API Error] Falha na busca de leads:', err.message);
@@ -179,6 +195,21 @@ router.get('/searches', async (req, res) => {
   } catch (err) {
     console.error('[API Saved Searches Error]:', err.message);
     res.status(500).json({ error: 'Não foi possível carregar as buscas salvas.' });
+  }
+});
+
+router.get('/searches/:id', async (req, res) => {
+  try {
+    const raw = await dbService.settings.getSettingByKey('saved_searches');
+    let searches = [];
+    try { searches = JSON.parse(raw || '[]'); } catch { searches = []; }
+    const search = searches.find((item) => String(item.id) === String(req.params.id));
+    if (!search) return res.status(404).json({ error: 'Busca salva nÃ£o encontrada.' });
+    const leads = await dbService.leads.getLeadsByIds(search.leadIds || []);
+    res.json({ search, leads });
+  } catch (err) {
+    console.error('[API Saved Search Details Error]:', err.message);
+    res.status(500).json({ error: 'NÃ£o foi possÃ­vel reabrir a busca salva.' });
   }
 });
 

@@ -16,7 +16,7 @@ export const AppProvider = ({ children }) => {
     catch (error) { alert(error.message || 'Não foi possível executar os follow-ups.'); }
     finally { setTriggeringAutomation(false); }
   }, [triggerRefresh]);
-  const titles = { dashboard: 'Visão geral', search: 'Encontrar clientes', companies: 'Leads capturados', crm: 'Pipeline comercial', settings: 'Configurações' };
+  const titles = { dashboard: 'Visão geral', search: 'Encontrar clientes', companies: 'Leads capturados', messages: 'Chat e mensagens', crm: 'Pipeline comercial', settings: 'Configurações' };
   const title = selectedLeadId ? 'Perfil da empresa' : (titles[currentView] || 'LeadMap');
   return <AppContext.Provider value={{ currentView, selectedLeadId, refreshTrigger, triggeringAutomation, onViewChange, onSelectLead, triggerRefresh, triggerAutomation, title }}>{children}</AppContext.Provider>;
 };

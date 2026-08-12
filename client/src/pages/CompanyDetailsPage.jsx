@@ -9,6 +9,31 @@ import Button from '../components/common/Button';
 import Card from '../components/common/Card';
 import { apiFetch } from '../services/api';
 
+const buildProspectingMessages = (lead) => {
+  const company = lead.name || 'sua empresa';
+  const first = lead.first_message || `Olá! Encontrei a ${company} no Google e identifiquei oportunidades simples para melhorar a presença digital e gerar mais contatos. Posso compartilhar um diagnóstico rápido?`;
+  return {
+    whatsapp: {
+      firstContact: first,
+      secondContact: `Oi! Passando para saber se conseguiu ver meu diagnóstico sobre a presença digital da ${company}. Posso enviar os pontos principais por aqui?`,
+      followUp: `Olá! Separei uma sugestão prática para a ${company} atrair e converter mais clientes na região. Você teria 10 minutos nesta semana para eu apresentar?`,
+      lastAttempt: `Oi! Esta é minha última mensagem para não ser inconveniente. Se quiser avaliar melhorias de presença digital para a ${company} no futuro, fico à disposição.`,
+    },
+    email: {
+      firstContact: `Olá,\n\nAnalisei a presença digital da ${company} e encontrei oportunidades de melhoria que podem ajudar a gerar mais contatos locais. Posso enviar um diagnóstico breve com as prioridades?\n\nAbraços,`,
+      secondContact: `Olá,\n\nRetomo meu contato sobre as oportunidades digitais da ${company}. Preparei um resumo objetivo e posso enviá-lo sem compromisso. Faz sentido para vocês?`,
+      followUp: `Olá,\n\nTenho uma sugestão prática para melhorar a aquisição e a conversão de clientes da ${company}. Podemos conversar por 10 minutos nesta semana?`,
+      lastAttempt: `Olá,\n\nPara não ocupar sua caixa de entrada, encerro por aqui. Se quiser rever a presença digital da ${company} no futuro, fico à disposição.`,
+    },
+    instagram: {
+      firstContact: `Olá! Conheci o perfil da ${company} e notei algumas oportunidades de conteúdo e conversão. Posso mandar um diagnóstico rápido por aqui?`,
+      secondContact: `Oi! Conseguiu ver minha mensagem sobre a ${company}? Tenho algumas ideias objetivas de conteúdo que podem ajudar a gerar mais contatos.`,
+      followUp: `Separei uma sugestão prática para fortalecer o perfil da ${company}. Posso compartilhar em uma mensagem curta?`,
+      lastAttempt: `Passando só para encerrar meu contato sem incomodar. Se quiser ideias para o perfil da ${company} no futuro, fico à disposição!`,
+    },
+  };
+};
+
 export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
   const [activeTab, setActiveTab] = useState('general');
   const [copiedKey, setCopiedKey] = useState('');
@@ -57,8 +82,10 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
   // Sync editable message when channel/stage tabs change or lead loads
   useEffect(() => {
     if (!lead) return;
-    const msg = lead.prospectingMessages?.[activeMessageChannel]?.[activeMessageStage] 
-      || (activeMessageStage === 'firstContact' ? lead.first_message : '') 
+    const fallbackMessages = buildProspectingMessages(lead);
+    const msg = lead.prospectingMessages?.[activeMessageChannel]?.[activeMessageStage]
+      || lead.social_analysis?.prospectingMessages?.[activeMessageChannel]?.[activeMessageStage]
+      || fallbackMessages[activeMessageChannel]?.[activeMessageStage]
       || '';
     setEditableMessage(msg);
   }, [activeMessageChannel, activeMessageStage, lead]);

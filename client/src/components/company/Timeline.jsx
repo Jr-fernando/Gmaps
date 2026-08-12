@@ -12,9 +12,11 @@ export default function Timeline({
 }) {
   const getTimelineEvents = () => {
     const events = [];
+    const safeHistory = Array.isArray(crmHistory) ? crmHistory : [];
+    const safeFollowUps = Array.isArray(followUps) ? followUps : [];
     
     // Process manual history logs
-    crmHistory.forEach(h => {
+    safeHistory.filter(Boolean).forEach(h => {
       events.push({
         date: h.date,
         type: h.type || 'manual_note',
@@ -24,11 +26,12 @@ export default function Timeline({
     });
 
     // Process follow-ups from sequence
-    followUps.forEach(f => {
+    safeFollowUps.filter(Boolean).forEach(f => {
+      const body = typeof f?.message_body === 'string' ? f.message_body : 'Mensagem de acompanhamento';
       events.push({
         date: f.scheduled_for,
         type: 'followup',
-        description: `Follow-up Dia ${f.sequence_day}: ${f.message_body.slice(0, 60)}...`,
+        description: `Follow-up Dia ${f.sequence_day || '—'}: ${body.slice(0, 60)}${body.length > 60 ? '...' : ''}`,
         isCompleted: f.status === 'Enviado',
         isPending: f.status === 'Agendado',
         sequenceDay: f.sequence_day,
