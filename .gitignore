@@ -35,3 +35,6 @@ task.md
 implementation_plan.md
 walkthrough.md
 *.png
+
+.vercel
+.env*
