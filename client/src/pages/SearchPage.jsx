@@ -44,6 +44,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   const [savedSearches, setSavedSearches] = useState([]);
   const [activeSearchId, setActiveSearchId] = useState(initialSession.activeSearchId || '');
   const resultsRef = useRef(null);
+  const restoreSearchId = initialSession.activeSearchId || '';
 
   const selectedNeeds = useMemo(() => NEEDS.filter((item) => form.needs.includes(item.id)), [form.needs]);
   const sortedResults = useMemo(() => {
@@ -64,11 +65,11 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
 
   useEffect(() => {
     const savedPromise = searchService.getSaved().then(setSavedSearches).catch(() => setSavedSearches([]));
-    const activePromise = activeSearchId
-      ? searchService.getById(activeSearchId).then(({ leads }) => setResults(leads || [])).catch(() => setActiveSearchId(''))
+    const activePromise = restoreSearchId
+      ? searchService.getById(restoreSearchId).then(({ leads }) => setResults(leads || [])).catch(() => setActiveSearchId(''))
       : Promise.resolve();
     Promise.all([savedPromise, activePromise]).catch(() => {});
-  }, [initialSession.activeSearchId]);
+  }, [restoreSearchId]);
 
   useEffect(() => {
     try {
