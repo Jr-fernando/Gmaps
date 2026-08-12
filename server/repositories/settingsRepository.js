@@ -1,6 +1,19 @@
 import { dbGet, dbRun, dbAll, isSupabaseEnabled, supabase } from '../db.js';
 
 const secretKeys = new Set(['gemini_api_key', 'openai_api_key', 'claude_api_key', 'google_places_api_key']);
+const environmentSecrets = {
+  gemini_api_key: 'GEMINI_API_KEY',
+  openai_api_key: 'OPENAI_API_KEY',
+  google_places_api_key: 'GOOGLE_PLACES_API_KEY'
+};
+
+const mergeEnvironmentSecrets = (settings) => {
+  const merged = { ...settings };
+  for (const [settingKey, environmentKey] of Object.entries(environmentSecrets)) {
+    if (process.env[environmentKey]) merged[settingKey] = process.env[environmentKey];
+  }
+  return merged;
+};
 
 export const settingsRepository = {
   // 1. Obter todas as configurações
@@ -12,14 +25,14 @@ export const settingsRepository = {
       (data || []).forEach(r => {
         settingsObj[r.key] = r.value;
       });
-      return settingsObj;
+      return mergeEnvironmentSecrets(settingsObj);
     } else {
       const rows = await dbAll('SELECT key, value FROM settings');
       const settingsObj = {};
       rows.forEach(r => {
         settingsObj[r.key] = r.value;
       });
-      return settingsObj;
+      return mergeEnvironmentSecrets(settingsObj);
     }
   },
 
@@ -35,6 +48,8 @@ export const settingsRepository = {
 
   // 2. Obter configuração única
   getSettingByKey: async (key) => {
+    const environmentKey = environmentSecrets[key];
+    if (environmentKey && process.env[environmentKey]) return process.env[environmentKey];
     if (isSupabaseEnabled) {
       const { data, error } = await supabase.from('settings').select('value').eq('key', key).maybeSingle();
       if (error) return '';
