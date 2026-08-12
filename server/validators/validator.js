@@ -11,7 +11,11 @@ export const validateLeadSearch = (req, res, next) => {
   req.body.query = query.trim().substring(0, 100);
   req.body.city = city.trim().substring(0, 100);
   req.body.region = typeof req.body.region === 'string' ? req.body.region.trim().substring(0, 100) : '';
-  req.body.need = ['social_media', 'website', 'whatsapp', 'traffic'].includes(req.body.need) ? req.body.need : '';
+  const allowedNeeds = ['social_media', 'content', 'website', 'whatsapp', 'traffic'];
+  const requestedNeeds = Array.isArray(req.body.needs) ? req.body.needs : [req.body.need];
+  req.body.needs = [...new Set(requestedNeeds.filter((need) => allowedNeeds.includes(need)))];
+  if (!req.body.needs.length) req.body.needs = ['social_media'];
+  req.body.need = req.body.needs[0];
   req.body.radius = Math.min(Math.max(Number(req.body.radius) || 15, 1), 50);
   req.body.minReviews = Math.min(Math.max(Number(req.body.minReviews) || 0, 0), 100000);
   req.body.maxRating = req.body.maxRating === undefined ? undefined : Math.min(Math.max(Number(req.body.maxRating) || 0, 0), 5);

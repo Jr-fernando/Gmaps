@@ -17,3 +17,12 @@ test('sorts easy and hard leads in the requested direction', () => {
   assert.equal(sortQualifiedLeads([hard, easy], 'easiest')[0].name, 'Fácil');
   assert.equal(sortQualifiedLeads([easy, hard], 'hardest')[0].name, 'Difícil');
 });
+
+test('combines multiple commercial services in one qualification', () => {
+  const qualified = qualifyLead({ ...baseLead, website: '' }, ['social_media', 'content', 'traffic']);
+  const qualification = qualified.website_analysis.qualification;
+  assert.deepEqual(qualification.targetServices, ['social_media', 'content', 'traffic']);
+  assert.equal(qualification.serviceMatches.length, 3);
+  assert.match(qualification.serviceLabel, /social media/);
+  assert.match(qualification.serviceLabel, /conteúdo/);
+});

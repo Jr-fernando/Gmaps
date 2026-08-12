@@ -1,19 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight, Building2, Check, ChevronDown, Globe2, Instagram, LoaderCircle,
+  ArrowRight, Building2, Check, ChevronDown, Clapperboard, Clock3, Globe2, Instagram, LoaderCircle,
   MapPin, MessageCircle, Search, SlidersHorizontal, Sparkles, Star, Target
 } from 'lucide-react';
-import { leadService, settingsService } from '../services/api';
+import { leadService, searchService, settingsService } from '../services/api';
 
 const NEEDS = [
   { id: 'social_media', label: 'Social media', hint: 'Instagram ausente ou fraco', icon: Instagram },
+  { id: 'content', label: 'Edição e conteúdo', hint: 'Prova social sem conteúdo estratégico', icon: Clapperboard },
   { id: 'website', label: 'Site ou landing page', hint: 'Sem site ou experiência ruim', icon: Globe2 },
   { id: 'whatsapp', label: 'WhatsApp e automação', hint: 'Atendimento sem conversão', icon: MessageCircle },
   { id: 'traffic', label: 'Tráfego pago', hint: 'Boa reputação, pouca aquisição', icon: Target },
 ];
 
 const INITIAL = {
-  query: '', city: 'São Paulo', region: '', radius: '15', need: 'social_media',
+  query: '', city: 'São Paulo', region: '', radius: '15', needs: ['social_media'],
   minReviews: '10', maxRating: '', onlyNoWebsite: false, onlyNoInstagram: false, limit: '20', sortMode: 'vulnerable'
 };
 
@@ -33,8 +34,9 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   const [results, setResults] = useState([]);
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState('');
+  const [savedSearches, setSavedSearches] = useState([]);
 
-  const selectedNeed = useMemo(() => NEEDS.find((item) => item.id === form.need), [form.need]);
+  const selectedNeeds = useMemo(() => NEEDS.filter((item) => form.needs.includes(item.id)), [form.needs]);
   const sortedResults = useMemo(() => {
     const score = (lead, key, fallback = 0) => Number(qualificationOf(lead)[key] ?? fallback);
     return [...results].sort((a, b) => {
@@ -45,6 +47,15 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
     });
   }, [results, form.sortMode]);
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const toggleNeed = (id) => setForm((current) => {
+    const selected = current.needs.includes(id);
+    if (selected && current.needs.length === 1) return current;
+    return { ...current, needs: selected ? current.needs.filter((need) => need !== id) : [...current.needs, id] };
+  });
+
+  useEffect(() => {
+    searchService.getSaved().then(setSavedSearches).catch(() => setSavedSearches([]));
+  }, []);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -58,7 +69,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         city: form.city,
         region: form.region,
         radius: Number(form.radius),
-        need: form.need,
+        needs: form.needs,
         minReviews: Number(form.minReviews || 0),
         maxRating: form.maxRating ? Number(form.maxRating) : undefined,
         onlyNoWebsite: form.onlyNoWebsite,
@@ -70,10 +81,12 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
       setSummary({
         count: data.leads?.length || 0,
         realData: Boolean(settings.google_places_api_key_configured),
-        need: selectedNeed?.label,
+        needs: selectedNeeds.map((item) => item.label),
         requested: data.requested || Number(form.limit),
         shortfall: data.shortfall || 0,
       });
+      const saved = await searchService.getSaved().catch(() => []);
+      setSavedSearches(saved);
       onSearchComplete?.();
     } catch (err) {
       setError(err.message || 'Não foi possível concluir a busca.');
@@ -110,11 +123,11 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         </div>
 
         <div className="builder-section">
-          <div className="builder-step"><span>2</span><div><strong>Qual oportunidade você quer vender?</strong><small>A qualificação prioriza empresas com essa necessidade</small></div></div>
+          <div className="builder-step"><span>2</span><div><strong>Quais serviços você quer vender?</strong><small>Selecione uma ou várias oportunidades para combinar a qualificação</small></div></div>
           <div className="need-grid">
             {NEEDS.map(({ id, label, hint, icon: Icon }) => (
-              <button type="button" key={id} className={`need-card ${form.need === id ? 'selected' : ''}`} onClick={() => update('need', id)}>
-                <span className="need-icon"><Icon size={19} /></span><span><strong>{label}</strong><small>{hint}</small></span>{form.need === id && <Check className="need-check" size={15} />}
+              <button type="button" aria-pressed={form.needs.includes(id)} key={id} className={`need-card ${form.needs.includes(id) ? 'selected' : ''}`} onClick={() => toggleNeed(id)}>
+                <span className="need-icon"><Icon size={19} /></span><span><strong>{label}</strong><small>{hint}</small></span>{form.needs.includes(id) && <Check className="need-check" size={15} />}
               </button>
             ))}
           </div>
@@ -135,7 +148,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
 
         {error && <div className="inline-error">{error}</div>}
         <div className="builder-action">
-          <div><strong>Busca pronta</strong><span>{form.query || 'Seu nicho'} · {form.city}{form.region ? `, ${form.region}` : ''} · {selectedNeed?.label}</span></div>
+          <div><strong>Busca pronta</strong><span>{form.query || 'Seu nicho'} · {form.city}{form.region ? `, ${form.region}` : ''} · {selectedNeeds.map((item) => item.label).join(' + ')}</span></div>
           <button className="launch-search" disabled={loading || !form.query.trim() || !form.city.trim()}>{loading ? <><LoaderCircle className="spin" size={18} /> Qualificando empresas...</> : <>Encontrar oportunidades <ArrowRight size={18} /></>}</button>
         </div>
       </form>
@@ -156,6 +169,15 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
           </button>})}
         </div>
       </section>}
+
+      <section className="saved-searches-section">
+        <div className="saved-searches-title"><div><span className="eyebrow"><Clock3 size={13} /> Histórico salvo</span><h2>Buscas recentes</h2></div><span>{savedSearches.length} salvas</span></div>
+        {savedSearches.length === 0 ? <p className="directory-empty">Suas buscas aparecerão aqui automaticamente.</p> : (
+          <div className="saved-searches-list">{savedSearches.slice(0, 8).map((item) => (
+            <article key={item.id}><div><strong>{item.query}</strong><small>{item.city}{item.region ? ` · ${item.region}` : ''}</small></div><div className="saved-search-needs">{(item.needs || []).map((need) => <i key={need}>{NEEDS.find((entry) => entry.id === need)?.label || need}</i>)}</div><div><strong>{item.found}/{item.requested}</strong><small>{new Date(item.createdAt).toLocaleString('pt-BR')}</small></div></article>
+          ))}</div>
+        )}
+      </section>
     </div>
   );
 }

@@ -101,7 +101,7 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
     console.log(`[API] Iniciando busca ativa para segmento '${query}' em '${city}'...`);
     const leads = await searchCompanies(query, city, criteria);
 
-    const qualified = sortQualifiedLeads(leads.map((lead) => qualifyLead(lead, criteria.need)), criteria.sortMode);
+    const qualified = sortQualifiedLeads(leads.map((lead) => qualifyLead(lead, criteria.needs)), criteria.sortMode);
     const existingLeads = await dbService.leads.findLeadsByNamesAndCity(qualified.map((lead) => lead.name), city);
     const existingByName = new Map(existingLeads.map((lead) => [lead.name, lead]));
     const savedLeads = [];
@@ -114,10 +114,14 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
         const existing = existingByName.get(lead.name);
         if (existing) {
           const qualification = lead.website_analysis?.qualification;
+          const websiteAnalysis = { ...(existing.website_analysis || {}), qualification };
+          const socialAnalysis = { ...(existing.social_analysis || {}), qualification };
+          await dbService.leads.updateLeadQualification(existing.id, websiteAnalysis, socialAnalysis, lead.opportunity_score);
           return {
             ...existing,
-            website_analysis: { ...(existing.website_analysis || {}), qualification },
-            social_analysis: { ...(existing.social_analysis || {}), qualification },
+            opportunity_score: lead.opportunity_score,
+            website_analysis: websiteAnalysis,
+            social_analysis: socialAnalysis,
           };
         }
         try {
@@ -135,6 +139,25 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
     }
 
     const ordered = sortQualifiedLeads(savedLeads, criteria.sortMode).slice(0, criteria.limit);
+    try {
+      const savedSearchesRaw = await dbService.settings.getSettingByKey('saved_searches');
+      let savedSearches = [];
+      try { savedSearches = JSON.parse(savedSearchesRaw || '[]'); } catch { savedSearches = []; }
+      savedSearches.unshift({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        query,
+        city,
+        region: criteria.region || '',
+        needs: criteria.needs,
+        requested: criteria.limit,
+        found: ordered.length,
+        leadIds: ordered.map((lead) => lead.id),
+        createdAt: new Date().toISOString(),
+      });
+      await dbService.settings.saveSettings({ saved_searches: JSON.stringify(savedSearches.slice(0, 30)) });
+    } catch (historyError) {
+      console.error('[API Saved Search Write Error]:', historyError.message);
+    }
     res.json({
       message: `Busca finalizada. ${ordered.length} leads entregues e ${newCount} adicionados ao CRM.`,
       leads: ordered,
@@ -146,6 +169,16 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
   } catch (err) {
     console.error('[API Error] Falha na busca de leads:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/searches', async (req, res) => {
+  try {
+    const raw = await dbService.settings.getSettingByKey('saved_searches');
+    res.json(JSON.parse(raw || '[]'));
+  } catch (err) {
+    console.error('[API Saved Searches Error]:', err.message);
+    res.status(500).json({ error: 'Não foi possível carregar as buscas salvas.' });
   }
 });
 

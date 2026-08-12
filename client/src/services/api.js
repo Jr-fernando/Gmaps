@@ -122,6 +122,10 @@ export const leadService = {
   }
 };
 
+export const searchService = {
+  getSaved: async () => handleResponse(await apiFetch('/api/searches'))
+};
+
 export const settingsService = {
   getSettings: async () => {
     const res = await apiFetch('/api/settings');

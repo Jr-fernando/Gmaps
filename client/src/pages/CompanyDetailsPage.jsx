@@ -233,6 +233,7 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
                       <div><small>Facilidade de contato</small><strong>{qualification.contactabilityScore}/100</strong></div>
                     </div>
                     <div className="qualification-reasons">
+                      {(qualification.serviceMatches || []).map((service) => <span className="service-match" key={service.targetService}>{service.serviceLabel}: {service.vulnerabilityScore}/100</span>)}
                       {(qualification.reasons || []).map((reason) => <span key={reason}>{reason}</span>)}
                     </div>
                   </Card>

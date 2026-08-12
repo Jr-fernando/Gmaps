@@ -439,10 +439,16 @@ const matchesCriteria = (lead, criteria = {}) => {
   if (criteria.maxRating !== undefined && criteria.maxRating !== null && criteria.maxRating !== '' && Number(lead.rating || 0) > Number(criteria.maxRating)) return false;
   if (criteria.onlyNoWebsite && lead.website) return false;
   if (criteria.onlyNoInstagram && lead.instagram) return false;
-  if (criteria.need === 'website' && lead.website) return false;
-  if (criteria.need === 'social_media' && lead.instagram && Number(lead.followers || 0) > 1500) return false;
-  if (criteria.need === 'whatsapp' && lead.whatsapp && lead.website) return false;
-  if (criteria.need === 'traffic' && Number(lead.rating || 0) < 4) return false;
+  const needs = Array.isArray(criteria.needs) && criteria.needs.length ? criteria.needs : [criteria.need].filter(Boolean);
+  const matchesNeed = (need) => {
+    if (need === 'website') return !lead.website;
+    if (need === 'social_media') return !lead.instagram || Number(lead.followers || 0) <= 1500;
+    if (need === 'whatsapp') return !lead.whatsapp || !lead.website;
+    if (need === 'traffic') return Number(lead.rating || 0) >= 4;
+    if (need === 'content') return Number(lead.reviews_count || 0) >= 10;
+    return true;
+  };
+  if (needs.length && !needs.some(matchesNeed)) return false;
   return true;
 };
 

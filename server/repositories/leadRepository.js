@@ -311,6 +311,26 @@ export const leadRepository = {
     }));
   },
 
+  updateLeadQualification: async (id, websiteAnalysis, socialAnalysis, opportunityScore) => {
+    if (isSupabaseEnabled) {
+      const { error } = await supabase.from('leads').update({
+        opportunity_score: opportunityScore,
+        website_analysis: websiteAnalysis,
+        social_analysis: socialAnalysis,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+      if (error) throw error;
+    } else {
+      await dbRun('UPDATE leads SET opportunity_score = ?, website_analysis = ?, social_analysis = ?, updated_at = ? WHERE id = ?', [
+        opportunityScore,
+        JSON.stringify(websiteAnalysis),
+        JSON.stringify(socialAnalysis),
+        new Date().toISOString(),
+        id,
+      ]);
+    }
+  },
+
   // 5. Criar lead
   createLead: async (leadData) => {
     const now = new Date().toISOString();

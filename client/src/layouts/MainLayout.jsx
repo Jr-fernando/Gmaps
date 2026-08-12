@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { BarChart3, Building2, Kanban, MapPinned, RefreshCw, Search, Settings, Sparkles } from 'lucide-react';
 
 const NAV = [
@@ -8,6 +9,14 @@ const NAV = [
 ];
 
 export default function MainLayout({ children, currentView, onViewChange, title, triggerAutomation, triggeringAutomation }) {
+  const contentRef = useRef(null);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    contentRef.current.scrollTop = 0;
+    contentRef.current.scrollLeft = 0;
+  }, [currentView, title]);
+
   return <div className="app-container">
     <aside className="sidebar">
       <button className="brand" onClick={() => onViewChange('dashboard')}>
@@ -24,7 +33,7 @@ export default function MainLayout({ children, currentView, onViewChange, title,
     </aside>
     <main className="main-content">
       <header className="top-bar"><div><span className="top-context">LeadMap /</span><h2 className="page-title">{title}</h2></div><button className="automation-button" onClick={triggerAutomation} disabled={triggeringAutomation}><RefreshCw size={14} className={triggeringAutomation ? 'spin' : ''} />{triggeringAutomation ? 'Processando...' : 'Executar follow-ups'}</button></header>
-      <div className="content-wrapper">{children}</div>
+      <div className="content-wrapper" ref={contentRef}>{children}</div>
     </main>
   </div>;
 }

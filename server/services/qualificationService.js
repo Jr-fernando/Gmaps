@@ -2,12 +2,13 @@ const clamp = (value, min = 0, max = 100) => Math.min(Math.max(Math.round(value)
 
 const SERVICE_LABELS = {
   social_media: 'gestão de social media',
+  content: 'edição e criação de conteúdo',
   website: 'site ou landing page',
   whatsapp: 'WhatsApp e automação',
   traffic: 'tráfego pago',
 };
 
-export const qualifyLead = (lead, need = 'social_media') => {
+const qualifyForService = (lead, need = 'social_media') => {
   const hasWebsite = Boolean(lead.website);
   const hasPhone = Boolean(lead.phone || lead.whatsapp);
   const rating = Number(lead.rating || 0);
@@ -27,6 +28,10 @@ export const qualifyLead = (lead, need = 'social_media') => {
   } else if (need === 'traffic') {
     vulnerability = clamp(38 + reputation * 0.45 + (hasWebsite ? 0 : 12));
     reasons.push(reputation >= 65 ? 'Boa reputação local para transformar em campanhas' : 'Reputação digital ainda em desenvolvimento');
+  } else if (need === 'content') {
+    vulnerability = clamp(42 + (reputation >= 60 ? 24 : 8) + (hasWebsite ? 0 : 10));
+    reasons.push(reputation >= 60 ? 'Avaliações fornecem material para conteúdo de prova social' : 'Conteúdo pode fortalecer a autoridade local');
+    if (reviews >= 30) reasons.push('Volume de clientes permite criar casos e depoimentos');
   } else {
     // Google Places does not expose Instagram data. This is an opportunity
     // estimate based on public local presence, never a claim that Instagram is absent.
@@ -45,7 +50,7 @@ export const qualifyLead = (lead, need = 'social_media') => {
   const difficultyLabel = difficulty <= 30 ? 'Fácil' : difficulty <= 60 ? 'Médio' : 'Difícil';
   const serviceLabel = SERVICE_LABELS[need] || SERVICE_LABELS.social_media;
 
-  const qualification = {
+  return {
     targetService: need,
     serviceLabel,
     vulnerabilityScore: vulnerability,
@@ -56,6 +61,28 @@ export const qualifyLead = (lead, need = 'social_media') => {
     reasons: reasons.slice(0, 4),
     socialDataVerified: false,
   };
+};
+
+export const qualifyLead = (lead, requestedNeeds = ['social_media']) => {
+  const needs = Array.isArray(requestedNeeds) ? requestedNeeds : [requestedNeeds];
+  const serviceMatches = needs.map((need) => qualifyForService(lead, need));
+  const bestMatch = serviceMatches.reduce((best, current) => current.vulnerabilityScore > best.vulnerabilityScore ? current : best, serviceMatches[0]);
+  const averageVulnerability = clamp(serviceMatches.reduce((total, item) => total + item.vulnerabilityScore, 0) / serviceMatches.length);
+  const averageDifficulty = clamp(serviceMatches.reduce((total, item) => total + item.difficultyScore, 0) / serviceMatches.length);
+  const reasons = [...new Set(serviceMatches.flatMap((item) => item.reasons))].slice(0, 6);
+  const serviceLabel = serviceMatches.map((item) => item.serviceLabel).join(', ');
+  const qualification = {
+    ...bestMatch,
+    targetServices: needs,
+    serviceLabel,
+    vulnerabilityScore: averageVulnerability,
+    difficultyScore: averageDifficulty,
+    difficultyLabel: averageDifficulty <= 30 ? 'Fácil' : averageDifficulty <= 60 ? 'Médio' : 'Difícil',
+    reasons,
+    serviceMatches,
+  };
+  const hasWebsite = Boolean(lead.website);
+  const opportunity = clamp(qualification.vulnerabilityScore * 0.65 + qualification.contactabilityScore * 0.2 + qualification.reputationScore * 0.15);
 
   return {
     ...lead,
@@ -65,9 +92,9 @@ export const qualifyLead = (lead, need = 'social_media') => {
     social_analysis: {
       qualification,
       instagramStatus: 'Não verificado pelo Google Places',
-      issues: need === 'social_media' ? reasons : [],
+      issues: needs.includes('social_media') ? reasons : [],
     },
-    ai_report: `### Oportunidade para ${serviceLabel}\n\n**Vulnerabilidade:** ${vulnerability}/100\n\n**Dificuldade estimada:** ${difficultyLabel} (${difficulty}/100)\n\n${reasons.map((reason) => `- ${reason}`).join('\n')}\n\nEsta é uma triagem inicial com dados públicos. Use **Reanalisar IA** no perfil para aprofundar a auditoria.`,
+    ai_report: `### Oportunidades: ${serviceLabel}\n\n**Vulnerabilidade combinada:** ${qualification.vulnerabilityScore}/100\n\n**Dificuldade estimada:** ${qualification.difficultyLabel} (${qualification.difficultyScore}/100)\n\n${reasons.map((reason) => `- ${reason}`).join('\n')}\n\nEsta é uma triagem inicial com dados públicos. Use **Reanalisar IA** no perfil para aprofundar a auditoria.`,
     first_message: `Olá! Encontrei a ${lead.name} ao analisar empresas de ${lead.segment} em ${lead.city}. Vi uma oportunidade em ${serviceLabel} que pode ajudar a transformar a presença local em mais contatos. Posso te enviar um diagnóstico curto, sem compromisso?`,
   };
 };
