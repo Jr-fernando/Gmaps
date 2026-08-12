@@ -14,8 +14,17 @@ const NEEDS = [
 
 const INITIAL = {
   query: '', city: 'São Paulo', region: '', radius: '15', need: 'social_media',
-  minReviews: '10', maxRating: '', onlyNoWebsite: false, onlyNoInstagram: false, limit: '20'
+  minReviews: '10', maxRating: '', onlyNoWebsite: false, onlyNoInstagram: false, limit: '20', sortMode: 'vulnerable'
 };
+
+const SORT_OPTIONS = [
+  { value: 'vulnerable', label: 'Mais vulneráveis primeiro' },
+  { value: 'easiest', label: 'Mais fáceis de fechar' },
+  { value: 'hardest', label: 'Mais difíceis primeiro' },
+  { value: 'reputation', label: 'Melhor reputação local' },
+];
+
+const qualificationOf = (lead) => lead.website_analysis?.qualification || lead.social_analysis?.qualification || {};
 
 export default function SearchPage({ onSearchComplete, onSelectLead }) {
   const [form, setForm] = useState(INITIAL);
@@ -26,6 +35,15 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   const [error, setError] = useState('');
 
   const selectedNeed = useMemo(() => NEEDS.find((item) => item.id === form.need), [form.need]);
+  const sortedResults = useMemo(() => {
+    const score = (lead, key, fallback = 0) => Number(qualificationOf(lead)[key] ?? fallback);
+    return [...results].sort((a, b) => {
+      if (form.sortMode === 'easiest') return score(a, 'difficultyScore', 100) - score(b, 'difficultyScore', 100);
+      if (form.sortMode === 'hardest') return score(b, 'difficultyScore') - score(a, 'difficultyScore');
+      if (form.sortMode === 'reputation') return score(b, 'reputationScore') - score(a, 'reputationScore');
+      return score(b, 'vulnerabilityScore') - score(a, 'vulnerabilityScore');
+    });
+  }, [results, form.sortMode]);
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
   const submit = async (event) => {
@@ -46,12 +64,15 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         onlyNoWebsite: form.onlyNoWebsite,
         onlyNoInstagram: form.onlyNoInstagram,
         limit: Number(form.limit),
+        sortMode: form.sortMode,
       });
       setResults(data.leads || []);
       setSummary({
         count: data.leads?.length || 0,
         realData: Boolean(settings.google_places_api_key_configured),
         need: selectedNeed?.label,
+        requested: data.requested || Number(form.limit),
+        shortfall: data.shortfall || 0,
       });
       onSearchComplete?.();
     } catch (err) {
@@ -105,9 +126,10 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
             <label><span>Raio</span><select value={form.radius} onChange={(e) => update('radius', e.target.value)}><option value="5">5 km</option><option value="15">15 km</option><option value="30">30 km</option><option value="50">50 km</option></select></label>
             <label><span>Mínimo de avaliações</span><select value={form.minReviews} onChange={(e) => update('minReviews', e.target.value)}><option value="0">Qualquer volume</option><option value="10">10+</option><option value="30">30+</option><option value="100">100+</option></select></label>
             <label><span>Nota máxima</span><select value={form.maxRating} onChange={(e) => update('maxRating', e.target.value)}><option value="">Qualquer nota</option><option value="4">Até 4,0</option><option value="4.3">Até 4,3</option><option value="4.6">Até 4,6</option></select></label>
-            <label><span>Quantidade</span><select value={form.limit} onChange={(e) => update('limit', e.target.value)}><option value="10">Até 10</option><option value="20">Até 20</option><option value="40">Até 40</option></select></label>
+            <label><span>Quantidade exata (1 a 100)</span><input className="advanced-number" type="number" min="1" max="100" value={form.limit} onChange={(e) => update('limit', e.target.value)} onBlur={() => update('limit', String(Math.min(Math.max(Number(form.limit) || 20, 1), 100)))} /></label>
+            <label><span>Ordem dos resultados</span><select value={form.sortMode} onChange={(e) => update('sortMode', e.target.value)}>{SORT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
             <label className="check-field"><input type="checkbox" checked={form.onlyNoWebsite} onChange={(e) => update('onlyNoWebsite', e.target.checked)} /><span>Somente empresas sem site</span></label>
-            <label className="check-field"><input type="checkbox" checked={form.onlyNoInstagram} onChange={(e) => update('onlyNoInstagram', e.target.checked)} /><span>Somente empresas sem Instagram</span></label>
+            <label className="check-field"><input type="checkbox" checked={form.onlyNoInstagram} onChange={(e) => update('onlyNoInstagram', e.target.checked)} /><span>Instagram não identificado</span></label>
           </div>}
         </div>
 
@@ -119,16 +141,19 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
       </form>
 
       {summary && !loading && <section className="search-results">
-        <div className="results-heading"><div><span className="eyebrow"><Check size={13} /> Busca concluída</span><h2>{summary.count} oportunidades encontradas</h2><p>Ordenadas pela aderência à oferta de {summary.need.toLowerCase()}.</p></div><span className={`source-badge ${summary.realData ? 'real' : ''}`}>{summary.realData ? 'Dados do Google Places' : 'Modo demonstração'}</span></div>
+        <div className="results-heading"><div><span className="eyebrow"><Check size={13} /> Busca concluída</span><h2>{summary.count} de {summary.requested} oportunidades encontradas</h2><p>{summary.shortfall ? `Foram encontrados ${summary.count} perfis únicos que atendem aos filtros. ` : ''}Você pode mudar a ordem abaixo sem refazer a busca.</p></div><span className={`source-badge ${summary.realData ? 'real' : ''}`}>{summary.realData ? 'Dados do Google Places' : 'Modo demonstração'}</span></div>
+        <div className="results-toolbar"><label><span>Priorizar</span><select value={form.sortMode} onChange={(e) => update('sortMode', e.target.value)}>{SORT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><small>Vulnerabilidade é uma estimativa. Instagram precisa ser validado fora do Google Places.</small></div>
         <div className="results-list">
-          {results.map((lead, index) => <button type="button" className="result-row" key={lead.id || index} onClick={() => lead.id && onSelectLead(lead.id)}>
+          {sortedResults.map((lead, index) => {
+            const qualification = qualificationOf(lead);
+            return <button type="button" className="result-row" key={lead.id || lead.place_id || index} onClick={() => lead.id && onSelectLead(lead.id)}>
             <span className="result-rank">{String(index + 1).padStart(2, '0')}</span>
             <span className="result-company"><strong>{lead.name}</strong><small><MapPin size={12} /> {lead.address || lead.city}</small></span>
             <span className="result-signal"><Star size={14} /> {lead.rating || '—'} <small>({lead.reviews_count || 0})</small></span>
-            <span className="result-gaps">{!lead.website && <i>Sem site</i>}{!lead.instagram && <i>Sem Instagram</i>}</span>
-            <span className="result-score"><small>Oportunidade</small><strong>{lead.opportunity_score || 0}</strong></span>
+            <span className="result-gaps">{!lead.website && <i>Sem site</i>}<i className={`difficulty-${String(qualification.difficultyLabel || '').toLowerCase()}`}>{qualification.difficultyLabel || 'Analisar'}</i></span>
+            <span className="result-score"><small>Vulnerável</small><strong>{qualification.vulnerabilityScore ?? lead.opportunity_score ?? 0}</strong></span>
             <ArrowRight size={17} />
-          </button>)}
+          </button>})}
         </div>
       </section>}
     </div>

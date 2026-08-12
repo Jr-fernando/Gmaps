@@ -282,6 +282,35 @@ export const leadRepository = {
     }
   },
 
+  findLeadsByNamesAndCity: async (names, city) => {
+    const cleanNames = [...new Set((names || []).filter(Boolean))];
+    if (!cleanNames.length) return [];
+
+    let rows = [];
+    if (isSupabaseEnabled) {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('city', city)
+        .in('name', cleanNames);
+      if (error) throw error;
+      rows = data || [];
+    } else {
+      const placeholders = cleanNames.map(() => '?').join(',');
+      rows = await dbAll(`SELECT * FROM leads WHERE city = ? AND name IN (${placeholders})`, [city, ...cleanNames]);
+    }
+
+    return rows.map((lead) => ({
+      ...lead,
+      website_analysis: parseJson(lead.website_analysis, {}),
+      social_analysis: parseJson(lead.social_analysis, {}),
+      reviews: parseJson(lead.reviews, []),
+      gallery: parseJson(lead.gallery, []),
+      history: parseJson(lead.history, []),
+      labels: parseJson(lead.labels, []),
+    }));
+  },
+
   // 5. Criar lead
   createLead: async (leadData) => {
     const now = new Date().toISOString();

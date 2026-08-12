@@ -332,8 +332,9 @@ async function searchRealPlaces(query, city, apiKey) {
 
 // Places API (New) uses POST requests and explicit field masks. Keeping the
 // API key in request headers prevents it from leaking into browser-facing URLs.
-async function searchRealPlacesNew(query, city, apiKey, limit = 20) {
+async function searchRealPlacesNew(query, city, apiKey, limit = 20, criteria = {}) {
   const fieldMask = [
+    'nextPageToken',
     'places.id', 'places.displayName', 'places.formattedAddress',
     'places.nationalPhoneNumber', 'places.internationalPhoneNumber',
     'places.websiteUri', 'places.rating', 'places.userRatingCount',
@@ -341,23 +342,7 @@ async function searchRealPlacesNew(query, city, apiKey, limit = 20) {
     'places.types', 'places.location', 'places.regularOpeningHours', 'places.reviews'
   ].join(',');
 
-  try {
-    const response = await axios.post('https://places.googleapis.com/v1/places:searchText', {
-      textQuery: `${query} em ${city}`,
-      languageCode: 'pt-BR',
-      regionCode: 'BR',
-      pageSize: Math.min(Math.max(Number(limit) || 20, 1), 20)
-    }, {
-      timeout: 12000,
-      maxRedirects: 0,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': fieldMask
-      }
-    });
-
-    return (response.data.places || []).map((place) => {
+  const mapPlace = (place) => {
       const name = place.displayName?.text || 'Empresa local';
       const address = place.formattedAddress || '';
       const stateMatch = address.match(/\b([A-Z]{2})\b(?:\s*,?\s*\d{5}-?\d{3})?/);
@@ -372,6 +357,7 @@ async function searchRealPlacesNew(query, city, apiKey, limit = 20) {
       }));
 
       return {
+        place_id: place.id,
         name,
         segment: query,
         phone,
@@ -398,7 +384,49 @@ async function searchRealPlacesNew(query, city, apiKey, limit = 20) {
         reviews,
         gallery: []
       };
-    });
+  };
+
+  const requested = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const locations = criteria.region
+    ? [`${criteria.region}, ${city}`, city]
+    : [city, `centro de ${city}`, `zona norte de ${city}`, `zona sul de ${city}`, `zona leste de ${city}`, `zona oeste de ${city}`];
+  const uniquePlaces = new Map();
+  const eligible = [];
+
+  try {
+    for (const location of locations) {
+      let pageToken = '';
+      for (let page = 0; page < 3; page += 1) {
+        const body = {
+          textQuery: `${query} em ${location}`,
+          languageCode: 'pt-BR',
+          regionCode: 'BR',
+          pageSize: 20,
+          ...(pageToken ? { pageToken } : {})
+        };
+        const response = await axios.post('https://places.googleapis.com/v1/places:searchText', body, {
+          timeout: 12000,
+          maxRedirects: 0,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': fieldMask
+          }
+        });
+
+        for (const place of response.data.places || []) {
+          if (!place.id || uniquePlaces.has(place.id)) continue;
+          uniquePlaces.set(place.id, true);
+          const lead = mapPlace(place);
+          if (matchesCriteria(lead, criteria)) eligible.push(lead);
+          if (eligible.length >= requested) return eligible.slice(0, requested);
+        }
+
+        pageToken = response.data.nextPageToken || '';
+        if (!pageToken) break;
+      }
+    }
+    return eligible.slice(0, requested);
   } catch (err) {
     const googleMessage = err.response?.data?.error?.message || err.message;
     console.error('Google Places API recusou a busca:', googleMessage);
@@ -429,9 +457,8 @@ export const searchCompanies = async (query, city, criteria = {}) => {
 
   if (apiKey && apiKey.trim() !== '') {
     console.log(`Usando Google Places API real com a chave configurada para: ${query} em ${city}...`);
-    const locationQuery = criteria.region ? `${query} em ${criteria.region}` : query;
-    const leads = await searchRealPlacesNew(locationQuery, city, apiKey, criteria.limit);
-    return leads.filter((lead) => matchesCriteria(lead, criteria)).slice(0, criteria.limit || 20);
+    const leads = await searchRealPlacesNew(query, city, apiKey, criteria.limit, criteria);
+    return leads.slice(0, criteria.limit || 20);
   } else {
     console.log(`Chave Google Places API não encontrada. Usando gerador de simulação avançada para: ${query} em ${city}...`);
     // Wait for 1.5 seconds to simulate API lag

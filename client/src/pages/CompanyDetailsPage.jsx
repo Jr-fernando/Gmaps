@@ -144,6 +144,8 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
   }
 
   const { website_analysis: websiteAnalysis = {} } = lead;
+  const qualification = websiteAnalysis.qualification || lead.social_analysis?.qualification || {};
+  const detailedReviews = Array.isArray(lead.reviews) ? lead.reviews : [];
 
   const mapUrl = lead.latitude && lead.longitude
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${lead.longitude - 0.003}%2C${lead.latitude - 0.002}%2C${lead.longitude + 0.003}%2C${lead.latitude + 0.002}&layer=mapnik&marker=${lead.latitude}%2C${lead.longitude}`
@@ -222,8 +224,22 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
             {/* GENERAL TAB */}
             {activeTab === 'general' && (
               <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {qualification.vulnerabilityScore !== undefined && (
+                  <Card>
+                    <h3 className="section-header-mini" style={{ marginBottom: '14px' }}>Qualificação comercial</h3>
+                    <div className="qualification-grid">
+                      <div><small>Vulnerabilidade</small><strong>{qualification.vulnerabilityScore}/100</strong></div>
+                      <div><small>Dificuldade</small><strong>{qualification.difficultyLabel} · {qualification.difficultyScore}/100</strong></div>
+                      <div><small>Facilidade de contato</small><strong>{qualification.contactabilityScore}/100</strong></div>
+                    </div>
+                    <div className="qualification-reasons">
+                      {(qualification.reasons || []).map((reason) => <span key={reason}>{reason}</span>)}
+                    </div>
+                  </Card>
+                )}
                 <Card>
                   <h3 className="section-header-mini" style={{ marginBottom: '14px' }}>Localização Geográfica</h3>
+                  {lead.address && <p style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '12px' }}>{lead.address}</p>}
                   {mapUrl ? (
                     <div style={{ height: '300px', width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
                       <iframe 
@@ -278,9 +294,9 @@ export default function CompanyDetailsPage({ leadId, onBack, onLeadUpdated }) {
               <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <Card>
                   <h3 className="section-header-mini" style={{ marginBottom: '14px' }}>Comentários de Clientes</h3>
-                  {lead.reviews && lead.reviews.length > 0 ? (
+                  {detailedReviews.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {lead.reviews.map((rev, idx) => (
+                      {detailedReviews.map((rev, idx) => (
                         <div key={idx} style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                             <strong style={{ fontSize: '0.85rem', color: '#fff' }}>{rev.author}</strong>

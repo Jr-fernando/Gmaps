@@ -2,6 +2,7 @@ import express from 'express';
 import { dbService } from './services/dbService.js';
 import { searchCompanies } from './services/scraperService.js';
 import { analyzePresence } from './services/presenceService.js';
+import { qualifyLead, sortQualifiedLeads } from './services/qualificationService.js';
 import { generateAiReport, generateProposalText, chatWithLeadAi } from './services/aiService.js';
 import { processPendingFollowUps } from './services/cronService.js';
 import { validateLeadSearch, validateCrmUpdate, validateLeadId, validateMessage } from './validators/validator.js';
@@ -100,45 +101,48 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
     console.log(`[API] Iniciando busca ativa para segmento '${query}' em '${city}'...`);
     const leads = await searchCompanies(query, city, criteria);
 
-    const addedLeads = [];
-    for (const lead of leads) {
-      try {
-        const existing = await dbService.leads.findLeadByNameAndCity(lead.name, lead.city);
+    const qualified = sortQualifiedLeads(leads.map((lead) => qualifyLead(lead, criteria.need)), criteria.sortMode);
+    const existingLeads = await dbService.leads.findLeadsByNamesAndCity(qualified.map((lead) => lead.name), city);
+    const existingByName = new Map(existingLeads.map((lead) => [lead.name, lead]));
+    const savedLeads = [];
+    let newCount = 0;
+
+    // Small batches keep Supabase responsive without creating a long sequential waterfall.
+    for (let index = 0; index < qualified.length; index += 8) {
+      const batch = qualified.slice(index, index + 8);
+      const savedBatch = await Promise.all(batch.map(async (lead) => {
+        const existing = existingByName.get(lead.name);
         if (existing) {
-          console.log(`[API] Lead '${lead.name}' em '${lead.city}' já cadastrado. Pulando...`);
-          continue;
+          const qualification = lead.website_analysis?.qualification;
+          return {
+            ...existing,
+            website_analysis: { ...(existing.website_analysis || {}), qualification },
+            social_analysis: { ...(existing.social_analysis || {}), qualification },
+          };
         }
-
-        // Generate presence audit scores
-        const analysis = await analyzePresence(lead);
-        lead.opportunity_score = analysis.opportunityScore;
-        lead.has_website = lead.website ? 1 : 0;
-        lead.website_analysis = analysis.websiteAnalysis;
-        lead.social_analysis = analysis.socialAnalysis;
-
-        // Generate default AI reports and follow-up templates
-        const aiResult = await generateAiReport(lead, analysis.websiteAnalysis, analysis.socialAnalysis);
-        lead.first_message = aiResult.firstMessage;
-        lead.ai_report = aiResult.aiReport;
-        
-        // Save to database
-        const addedId = await dbService.leads.createLead(lead);
-        if (addedId) {
-          // Schedule background follow-up templates
-          await scheduleFollowUpsForLead(addedId, lead.name, '');
-          
-          const fullLead = await dbService.leads.getLeadById(addedId);
-          addedLeads.push(fullLead);
-
-          // Dispatch Webhook Event
-          dispatchWebhookEvent('NEW_LEAD', fullLead);
+        try {
+          const id = await dbService.leads.createLead(lead);
+          newCount += 1;
+          const saved = { ...lead, id };
+          dispatchWebhookEvent('NEW_LEAD', saved);
+          return saved;
+        } catch (error) {
+          console.error(`[API] Erro ao cadastrar lead individual '${lead.name}':`, error.message);
+          return null;
         }
-      } catch (e) {
-        console.error(`[API] Erro ao cadastrar lead individual '${lead.name}':`, e.message);
-      }
+      }));
+      savedLeads.push(...savedBatch.filter(Boolean));
     }
 
-    res.json({ message: `Busca finalizada. ${addedLeads.length} novos leads adicionados.`, leads: addedLeads });
+    const ordered = sortQualifiedLeads(savedLeads, criteria.sortMode).slice(0, criteria.limit);
+    res.json({
+      message: `Busca finalizada. ${ordered.length} leads entregues e ${newCount} adicionados ao CRM.`,
+      leads: ordered,
+      requested: criteria.limit,
+      found: ordered.length,
+      newCount,
+      shortfall: Math.max(criteria.limit - ordered.length, 0),
+    });
   } catch (err) {
     console.error('[API Error] Falha na busca de leads:', err.message);
     res.status(500).json({ error: err.message });

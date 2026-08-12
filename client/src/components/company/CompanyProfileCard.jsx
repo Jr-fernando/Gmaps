@@ -10,6 +10,8 @@ export default function CompanyProfileCard({
   crmNextAction, setCrmNextAction,
   crmNotes, setCrmNotes,
   crmStatus, setCrmStatus,
+  crmFirstContactDate,
+  crmLastContactDate,
   crmProbability, setCrmProbability,
   crmNextContactDate, setCrmNextContactDate,
   savingCrm,

@@ -14,6 +14,7 @@ import CompaniesPage from './pages/CompaniesPage';
 import SettingsPage from './pages/SettingsPage';
 import CompanyDetailsPage from './pages/CompanyDetailsPage';
 import LoginPage from './pages/LoginPage';
+import AppErrorBoundary from './components/AppErrorBoundary';
 import { authService } from './services/api';
 
 function AppInner() {
@@ -38,11 +39,13 @@ function AppInner() {
       triggeringAutomation={triggeringAutomation}
     >
       {selectedLeadId ? (
-        <CompanyDetailsPage 
-          leadId={selectedLeadId}
-          onBack={() => onViewChange(currentView)}
-          onLeadUpdated={triggerRefresh}
-        />
+        <AppErrorBoundary onRecover={() => onViewChange(currentView)}>
+          <CompanyDetailsPage
+            leadId={selectedLeadId}
+            onBack={() => onViewChange(currentView)}
+            onLeadUpdated={triggerRefresh}
+          />
+        </AppErrorBoundary>
       ) : (
         <>
           {currentView === 'dashboard' && <DashboardPage onNavigate={onViewChange} />}

@@ -15,7 +15,8 @@ export const validateLeadSearch = (req, res, next) => {
   req.body.radius = Math.min(Math.max(Number(req.body.radius) || 15, 1), 50);
   req.body.minReviews = Math.min(Math.max(Number(req.body.minReviews) || 0, 0), 100000);
   req.body.maxRating = req.body.maxRating === undefined ? undefined : Math.min(Math.max(Number(req.body.maxRating) || 0, 0), 5);
-  req.body.limit = Math.min(Math.max(Number(req.body.limit) || 20, 1), 40);
+  req.body.limit = Math.min(Math.max(Math.floor(Number(req.body.limit) || 20), 1), 100);
+  req.body.sortMode = ['vulnerable', 'easiest', 'hardest', 'reputation'].includes(req.body.sortMode) ? req.body.sortMode : 'vulnerable';
   req.body.onlyNoWebsite = Boolean(req.body.onlyNoWebsite);
   req.body.onlyNoInstagram = Boolean(req.body.onlyNoInstagram);
   next();
