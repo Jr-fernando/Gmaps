@@ -330,6 +330,82 @@ async function searchRealPlaces(query, city, apiKey) {
   }
 }
 
+// Places API (New) uses POST requests and explicit field masks. Keeping the
+// API key in request headers prevents it from leaking into browser-facing URLs.
+async function searchRealPlacesNew(query, city, apiKey, limit = 20) {
+  const fieldMask = [
+    'places.id', 'places.displayName', 'places.formattedAddress',
+    'places.nationalPhoneNumber', 'places.internationalPhoneNumber',
+    'places.websiteUri', 'places.rating', 'places.userRatingCount',
+    'places.googleMapsUri', 'places.editorialSummary', 'places.primaryTypeDisplayName',
+    'places.types', 'places.location', 'places.regularOpeningHours', 'places.reviews'
+  ].join(',');
+
+  try {
+    const response = await axios.post('https://places.googleapis.com/v1/places:searchText', {
+      textQuery: `${query} em ${city}`,
+      languageCode: 'pt-BR',
+      regionCode: 'BR',
+      pageSize: Math.min(Math.max(Number(limit) || 20, 1), 20)
+    }, {
+      timeout: 12000,
+      maxRedirects: 0,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': fieldMask
+      }
+    });
+
+    return (response.data.places || []).map((place) => {
+      const name = place.displayName?.text || 'Empresa local';
+      const address = place.formattedAddress || '';
+      const stateMatch = address.match(/\b([A-Z]{2})\b(?:\s*,?\s*\d{5}-?\d{3})?/);
+      const phone = place.nationalPhoneNumber || place.internationalPhoneNumber || '';
+      const whatsapp = phone ? phone.replace(/\D/g, '').replace(/^0+/, '') : '';
+      const website = place.websiteUri || '';
+      const reviews = (place.reviews || []).map((review) => ({
+        author: review.authorAttribution?.displayName || 'Cliente Google',
+        rating: review.rating || 0,
+        text: review.originalText?.text || review.text?.text || '',
+        date: review.relativePublishTimeDescription || ''
+      }));
+
+      return {
+        name,
+        segment: query,
+        phone,
+        whatsapp,
+        email: '',
+        website,
+        instagram: '',
+        facebook: '',
+        city,
+        state: stateMatch?.[1] || '',
+        address,
+        rating: place.rating || 0,
+        reviews_count: place.userRatingCount || 0,
+        followers: 0,
+        description: place.editorialSummary?.text || `${query} em ${city}`,
+        category: place.primaryTypeDisplayName?.text || place.types?.[0] || 'Empresa',
+        gmaps_link: place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query_place_id=${place.id}`,
+        instagram_link: '',
+        status: 'Novo Lead',
+        has_website: website ? 1 : 0,
+        latitude: place.location?.latitude || 0,
+        longitude: place.location?.longitude || 0,
+        schedule: (place.regularOpeningHours?.weekdayDescriptions || []).join(', '),
+        reviews,
+        gallery: []
+      };
+    });
+  } catch (err) {
+    const googleMessage = err.response?.data?.error?.message || err.message;
+    console.error('Google Places API recusou a busca:', googleMessage);
+    throw new Error(`Google Places não autorizou a busca. Verifique se a Places API (New) e o faturamento estão ativos no Google Cloud. Detalhe: ${googleMessage}`);
+  }
+}
+
 const matchesCriteria = (lead, criteria = {}) => {
   if (criteria.minReviews && Number(lead.reviews_count || 0) < criteria.minReviews) return false;
   if (criteria.maxRating !== undefined && criteria.maxRating !== null && criteria.maxRating !== '' && Number(lead.rating || 0) > Number(criteria.maxRating)) return false;
@@ -354,7 +430,7 @@ export const searchCompanies = async (query, city, criteria = {}) => {
   if (apiKey && apiKey.trim() !== '') {
     console.log(`Usando Google Places API real com a chave configurada para: ${query} em ${city}...`);
     const locationQuery = criteria.region ? `${query} em ${criteria.region}` : query;
-    const leads = await searchRealPlaces(locationQuery, city, apiKey);
+    const leads = await searchRealPlacesNew(locationQuery, city, apiKey, criteria.limit);
     return leads.filter((lead) => matchesCriteria(lead, criteria)).slice(0, criteria.limit || 20);
   } else {
     console.log(`Chave Google Places API não encontrada. Usando gerador de simulação avançada para: ${query} em ${city}...`);

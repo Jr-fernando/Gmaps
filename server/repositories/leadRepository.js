@@ -319,14 +319,14 @@ export const leadRepository = {
       schedule: leadData.schedule || '',
       reviews: leadData.reviews || [],
       gallery: leadData.gallery || [],
-      first_contact_date: leadData.first_contact_date || '',
-      last_contact_date: leadData.last_contact_date || '',
+      first_contact_date: leadData.first_contact_date || null,
+      last_contact_date: leadData.last_contact_date || null,
       history: leadData.history || [],
       proposal_text: leadData.proposal_text || '',
       proposal_sent: leadData.proposal_sent ? 1 : 0,
       labels: leadData.labels || '[]',
       probability: leadData.probability || 50,
-      next_contact_date: leadData.next_contact_date || '',
+      next_contact_date: leadData.next_contact_date || null,
       updated_at: now
     };
 
@@ -397,14 +397,14 @@ export const leadRepository = {
         next_action: crmData.next_action,
         notes: crmData.notes,
         status: crmData.status,
-        first_contact_date: crmData.first_contact_date,
-        last_contact_date: crmData.last_contact_date,
+        first_contact_date: crmData.first_contact_date || null,
+        last_contact_date: crmData.last_contact_date || null,
         history: typeof crmData.history === 'object' ? crmData.history : parseJson(crmData.history, []),
         proposal_text: crmData.proposal_text,
         proposal_sent: crmData.proposal_sent ? true : false,
         labels: typeof crmData.labels === 'object' ? crmData.labels : parseJson(crmData.labels, []),
         probability: parseInt(crmData.probability || 50),
-        next_contact_date: crmData.next_contact_date,
+        next_contact_date: crmData.next_contact_date || null,
         updated_at: now
       }).eq('id', id).select('id');
       if (error) throw error;
