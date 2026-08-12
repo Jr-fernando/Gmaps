@@ -38,3 +38,7 @@ walkthrough.md
 
 .vercel
 .env*
+
+# Legacy workspaces retained only on this machine; the product now lives at root.
+Gmaps Local/
+Captação De Lead/

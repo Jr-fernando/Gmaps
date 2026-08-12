@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { automationService } from '../services/api';
 import { AppContext } from './contextStore';
 
@@ -7,63 +7,16 @@ export const AppProvider = ({ children }) => {
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [triggeringAutomation, setTriggeringAutomation] = useState(false);
-
-  const triggerRefresh = useCallback(() => {
-    setRefreshTrigger(prev => prev + 1);
-  }, []);
-
-  const onViewChange = useCallback((view) => {
-    setSelectedLeadId(null);
-    setCurrentView(view);
-  }, []);
-
-  const onSelectLead = useCallback((id) => {
-    setSelectedLeadId(id);
-  }, []);
-
-  const handleTriggerAutomation = useCallback(async () => {
+  const triggerRefresh = useCallback(() => setRefreshTrigger((value) => value + 1), []);
+  const onViewChange = useCallback((view) => { setSelectedLeadId(null); setCurrentView(view); }, []);
+  const onSelectLead = useCallback((id) => setSelectedLeadId(id), []);
+  const triggerAutomation = useCallback(async () => {
     setTriggeringAutomation(true);
-    try {
-      const data = await automationService.triggerAutomation();
-      if (data.success) {
-        alert(data.message);
-        triggerRefresh();
-      }
-    } catch (err) {
-      console.error(err);
-      alert(err.message || 'Erro ao disparar automações de follow-up.');
-    } finally {
-      setTriggeringAutomation(false);
-    }
+    try { const data = await automationService.triggerAutomation(); if (data.success) { alert(data.message); triggerRefresh(); } }
+    catch (error) { alert(error.message || 'Não foi possível executar os follow-ups.'); }
+    finally { setTriggeringAutomation(false); }
   }, [triggerRefresh]);
-
-  const getViewTitle = () => {
-    if (selectedLeadId) {
-      return 'Perfil Detalhado da Empresa';
-    }
-    switch (currentView) {
-      case 'dashboard': return 'Painel de Controle';
-      case 'search': return 'Busca Ativa de Empresas';
-      case 'companies': return 'Base de Empresas Capturadas';
-      case 'crm': return 'Funil de Vendas CRM';
-      case 'settings': return 'Configurações e Integrações';
-      default: return 'AgenticLeads';
-    }
-  };
-
-  return (
-    <AppContext.Provider value={{
-      currentView,
-      selectedLeadId,
-      refreshTrigger,
-      triggeringAutomation,
-      onViewChange,
-      onSelectLead,
-      triggerRefresh,
-      triggerAutomation: handleTriggerAutomation,
-      title: getViewTitle()
-    }}>
-      {children}
-    </AppContext.Provider>
-  );
+  const titles = { dashboard: 'Visão geral', search: 'Encontrar clientes', companies: 'Leads capturados', crm: 'Pipeline comercial', settings: 'Configurações' };
+  const title = selectedLeadId ? 'Perfil da empresa' : (titles[currentView] || 'LeadMap');
+  return <AppContext.Provider value={{ currentView, selectedLeadId, refreshTrigger, triggeringAutomation, onViewChange, onSelectLead, triggerRefresh, triggerAutomation, title }}>{children}</AppContext.Provider>;
 };

@@ -10,6 +10,14 @@ export const validateLeadSearch = (req, res, next) => {
   // Sanitization
   req.body.query = query.trim().substring(0, 100);
   req.body.city = city.trim().substring(0, 100);
+  req.body.region = typeof req.body.region === 'string' ? req.body.region.trim().substring(0, 100) : '';
+  req.body.need = ['social_media', 'website', 'whatsapp', 'traffic'].includes(req.body.need) ? req.body.need : '';
+  req.body.radius = Math.min(Math.max(Number(req.body.radius) || 15, 1), 50);
+  req.body.minReviews = Math.min(Math.max(Number(req.body.minReviews) || 0, 0), 100000);
+  req.body.maxRating = req.body.maxRating === undefined ? undefined : Math.min(Math.max(Number(req.body.maxRating) || 0, 0), 5);
+  req.body.limit = Math.min(Math.max(Number(req.body.limit) || 20, 1), 40);
+  req.body.onlyNoWebsite = Boolean(req.body.onlyNoWebsite);
+  req.body.onlyNoInstagram = Boolean(req.body.onlyNoInstagram);
   next();
 };
 

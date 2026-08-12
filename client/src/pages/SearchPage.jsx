@@ -1,510 +1,136 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Search, MapPin, Database, CheckCircle, Globe, Instagram, Mail, Phone, 
-  ShieldAlert, Star, Clock, Copy, Check, Eye, ChevronRight, AlertCircle, HelpCircle
+import { useMemo, useState } from 'react';
+import {
+  ArrowRight, Building2, Check, ChevronDown, Globe2, Instagram, LoaderCircle,
+  MapPin, MessageCircle, Search, SlidersHorizontal, Sparkles, Star, Target
 } from 'lucide-react';
 import { leadService, settingsService } from '../services/api';
 
-const MOCK_LOGS = [
-  'Conectando aos motores de busca locais...',
-  'Pesquisando estabelecimentos no Google Maps...',
-  'Filtrando empresas na região selecionada...',
-  'Coletando informações de contato (Telefone, Redes Sociais, Site)...',
-  'Analisando sites e estruturação digital...',
-  'Testando segurança HTTPS e responsividade mobile...',
-  'Auditando perfil de Instagram (frequência de postagem, links de bio)...',
-  'IA gerando relatório de oportunidade e prospecção personalizado...',
-  'Formatando relatórios técnicos e agendando sequência de follow-ups...',
-  'Armazenando leads estruturados no banco de dados SQLite/Supabase...',
-  'Processo concluído com sucesso!'
+const NEEDS = [
+  { id: 'social_media', label: 'Social media', hint: 'Instagram ausente ou fraco', icon: Instagram },
+  { id: 'website', label: 'Site ou landing page', hint: 'Sem site ou experiência ruim', icon: Globe2 },
+  { id: 'whatsapp', label: 'WhatsApp e automação', hint: 'Atendimento sem conversão', icon: MessageCircle },
+  { id: 'traffic', label: 'Tráfego pago', hint: 'Boa reputação, pouca aquisição', icon: Target },
 ];
 
+const INITIAL = {
+  query: '', city: 'São Paulo', region: '', radius: '15', need: 'social_media',
+  minReviews: '10', maxRating: '', onlyNoWebsite: false, onlyNoInstagram: false, limit: '20'
+};
+
 export default function SearchPage({ onSearchComplete, onSelectLead }) {
-  const [query, setQuery] = useState('');
-  const [city, setCity] = useState('');
-  
-  // Advanced filters state
-  const [filterRadius, setFilterRadius] = useState('');
-  const [filterMinReviews, setFilterMinReviews] = useState('');
-  const [filterRatingRange, setFilterRatingRange] = useState('');
-  const [filterOpportunity, setFilterOpportunity] = useState('');
-  const [filterNoWebsite, setFilterNoWebsite] = useState(false);
-  const [filterNoInstagram, setFilterNoInstagram] = useState(false);
-  const [filterNoFacebook, setFilterNoFacebook] = useState(false);
-
+  const [form, setForm] = useState(INITIAL);
+  const [advanced, setAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [logs, setLogs] = useState([]);
-  const [foundLeads, setFoundLeads] = useState([]);
-  const [searchDone, setSearchDone] = useState(false);
-  const [copiedKey, setCopiedKey] = useState('');
-  
-  // Google Places Key Configuration State
-  const [isPlacesKeyConfigured, setIsPlacesKeyConfigured] = useState(true);
-  const [showKeyHelp, setShowKeyHelp] = useState(false);
+  const [results, setResults] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState('');
 
-  const logsEndRef = useRef(null);
-  const logIndexRef = useRef(0);
-  const logIntervalRef = useRef(null);
+  const selectedNeed = useMemo(() => NEEDS.find((item) => item.id === form.need), [form.need]);
+  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
-  // Fetch settings to check if Places API is configured
-  useEffect(() => {
-    settingsService.getSettings()
-      .then(data => {
-        if (!data.google_places_api_key_configured) {
-          setIsPlacesKeyConfigured(false);
-        } else {
-          setIsPlacesKeyConfigured(true);
-        }
-      })
-      .catch(() => setIsPlacesKeyConfigured(false));
-  }, []);
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!query.trim() || !city.trim()) return;
-
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
     setLoading(true);
-    setSearchDone(false);
-    setFoundLeads([]);
-    setLogs(['Iniciando robô de busca de leads...']);
-    logIndexRef.current = 0;
-
-    // Start logging animation
-    logIntervalRef.current = setInterval(() => {
-      if (logIndexRef.current < MOCK_LOGS.length) {
-        setLogs(prev => [...prev, MOCK_LOGS[logIndexRef.current]]);
-        logIndexRef.current += 1;
-      } else {
-        clearInterval(logIntervalRef.current);
-      }
-    }, 1000);
-
+    setResults([]);
     try {
-      const data = await leadService.searchLeads(query, city);
-      
-      // Stop logger and flush rest of the logs
-      clearInterval(logIntervalRef.current);
-      setLogs(prev => [
-        ...prev, 
-        ...MOCK_LOGS.slice(logIndexRef.current), 
-        `Sucesso: ${data.leads?.length || 0} novos leads adicionados com análise inteligente!`
-      ]);
-      
-      // Apply advanced local filters on scraped results
-      let filtered = data.leads || [];
-      
-      if (filterMinReviews) {
-        filtered = filtered.filter(l => l.reviews_count >= parseInt(filterMinReviews));
-      }
-      if (filterRatingRange) {
-        if (filterRatingRange === 'low') filtered = filtered.filter(l => l.rating < 4.0);
-        if (filterRatingRange === 'high') filtered = filtered.filter(l => l.rating >= 4.5);
-      }
-      if (filterOpportunity) {
-        filtered = filtered.filter(l => l.opportunity_score >= parseInt(filterOpportunity));
-      }
-      if (filterNoWebsite) {
-        filtered = filtered.filter(l => l.has_website === 0 || !l.website);
-      }
-      if (filterNoInstagram) {
-        filtered = filtered.filter(l => !l.instagram);
-      }
-      if (filterNoFacebook) {
-        filtered = filtered.filter(l => !l.facebook);
-      }
-
-      setFoundLeads(filtered);
-      setSearchDone(true);
-      if (onSearchComplete) onSearchComplete();
+      const settings = await settingsService.getSettings().catch(() => ({}));
+      const data = await leadService.searchLeads({
+        query: form.query,
+        city: form.city,
+        region: form.region,
+        radius: Number(form.radius),
+        need: form.need,
+        minReviews: Number(form.minReviews || 0),
+        maxRating: form.maxRating ? Number(form.maxRating) : undefined,
+        onlyNoWebsite: form.onlyNoWebsite,
+        onlyNoInstagram: form.onlyNoInstagram,
+        limit: Number(form.limit),
+      });
+      setResults(data.leads || []);
+      setSummary({
+        count: data.leads?.length || 0,
+        realData: Boolean(settings.google_places_api_key_configured),
+        need: selectedNeed?.label,
+      });
+      onSearchComplete?.();
     } catch (err) {
-      clearInterval(logIntervalRef.current);
-      setLogs(prev => [...prev, `Erro durante a pesquisa: ${err.message}`]);
+      setError(err.message || 'Não foi possível concluir a busca.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopy = async (text, key, index) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedKey(`${key}_${index}`);
-      setTimeout(() => setCopiedKey(''), 2000);
-    } catch {
-      setLogs(prev => [...prev, 'Não foi possível copiar para a área de transferência.']);
-    }
-  };
-
-  useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs]);
-
-  useEffect(() => {
-    return () => clearInterval(logIntervalRef.current);
-  }, []);
-
   return (
-    <div className="search-box-wrapper animate-fade-in">
-      <div className="search-title-desc" style={{ marginBottom: '20px' }}>
-        <h2 style={{ fontFamily: 'var(--font-heading)', color: '#fff', fontSize: '1.5rem', fontWeight: 800, marginBottom: '6px' }}>
-          Busca Inteligente de Leads (Scraper Local)
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          Rastreie empresas locais no Google Maps e redes sociais, auditando a presença web e gerando diagnósticos comerciais automáticos usando inteligência artificial.
-        </p>
-      </div>
+    <div className="prospecting-page animate-fade-in">
+      <section className="prospecting-hero">
+        <div className="eyebrow"><Sparkles size={14} /> Prospecção orientada por oportunidade</div>
+        <h1>Encontre empresas que já precisam do que você vende.</h1>
+        <p>Escolha um nicho, uma região e a dor digital. O GMaps encontra, qualifica e organiza os melhores contatos para sua abordagem.</p>
+      </section>
 
-      {/* Google Places Key Callout Alert */}
-      {!isPlacesKeyConfigured && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '16px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', marginBottom: '20px', color: 'var(--color-warning)', fontSize: '0.85rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-            <AlertCircle size={18} />
-            <span>Modo de Simulação Ativo (Places API Key Ausente)</span>
-          </div>
-          <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.8rem' }}>
-            A Google Places API Key não está cadastrada em Configurações. O robô irá gerar simulações completas e detalhadas baseadas em bairros e cidades reais de empresas locais para demonstração de prospecção.
-          </p>
-          <button 
-            type="button" 
-            onClick={() => setShowKeyHelp(!showKeyHelp)}
-            style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--accent-primary)', textDecoration: 'underline', padding: 0, cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-          >
-            <HelpCircle size={12} /> {showKeyHelp ? 'Esconder ajuda' : 'Como configurar a chave real?'}
-          </button>
-
-          {showKeyHelp && (
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '6px', marginTop: '6px', color: 'var(--text-secondary)', fontSize: '0.78rem', lineHeight: '1.5' }}>
-              <strong>Passo a passo para chave oficial:</strong>
-              <ol style={{ paddingLeft: '20px', margin: '4px 0 0 0' }}>
-                <li>Acesse o console de desenvolvedores do Google Cloud.</li>
-                <li>Habilite as bibliotecas <strong>Places API</strong> e <strong>Maps JavaScript API</strong>.</li>
-                <li>Crie uma credencial de chave de API.</li>
-                <li>Insira a chave na aba de <strong>Configurações</strong> deste painel para iniciar a captura de dados de empresas reais do Google Maps.</li>
-              </ol>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Main Search Panel */}
-      <div className="glass-card" style={{ marginBottom: '24px', padding: '24px' }}>
-        <form onSubmit={handleSearch}>
-          <div className="search-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '16px', alignItems: 'end', marginBottom: '20px' }}>
-            <div className="input-group">
-              <label className="input-label" style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>
-                O que você está procurando? (Segmento/Nicho)
-              </label>
-              <div style={{ position: 'relative' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '15px', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  placeholder="Ex: Padaria, Clínica Odontológica, Oficina Mecânica"
-                  className="input-field"
-                  style={{ paddingLeft: '38px', width: '100%', borderRadius: '8px' }}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label className="input-label" style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>
-                Em qual cidade? (Localidade)
-              </label>
-              <div style={{ position: 'relative' }}>
-                <MapPin size={16} style={{ position: 'absolute', left: '12px', top: '15px', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  placeholder="Ex: São Paulo, Rio de Janeiro"
-                  className="input-field"
-                  style={{ paddingLeft: '38px', width: '100%', borderRadius: '8px' }}
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="btn-search" style={{ padding: '14px 24px', borderRadius: '8px', height: '46px' }} disabled={loading || !query.trim() || !city.trim()}>
-              <Database size={16} />
-              {loading ? 'Prospectando...' : 'Iniciar Prospecção'}
-            </button>
-          </div>
-
-          {/* Advanced Prospecting Filters Accordion */}
-          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '16px' }}>
-            <span style={{ fontWeight: '700', fontSize: '0.8rem', color: 'var(--text-primary)', display: 'block', marginBottom: '10px' }}>
-              Filtros Avançados de Qualificação
-            </span>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-              {/* Raio em KM */}
-              <div className="input-group">
-                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Raio de Prospecção (KM)</label>
-                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterRadius} onChange={(e) => setFilterRadius(e.target.value)}>
-                  <option value="">Todo o município</option>
-                  <option value="5">Até 5 KM do centro</option>
-                  <option value="15">Até 15 KM do centro</option>
-                  <option value="30">Até 30 KM do centro</option>
-                </select>
-              </div>
-
-              {/* Avaliações Mínimas */}
-              <div className="input-group">
-                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Volume Mínimo de Opiniões</label>
-                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterMinReviews} onChange={(e) => setFilterMinReviews(e.target.value)}>
-                  <option value="">Qualquer volume</option>
-                  <option value="50">Mais de 50 opiniões</option>
-                  <option value="15">Mais de 15 opiniões</option>
-                  <option value="5">Mais de 5 opiniões</option>
-                </select>
-              </div>
-
-              {/* Faixa de Avaliação */}
-              <div className="input-group">
-                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Faixa de Estrelas (Maps)</label>
-                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterRatingRange} onChange={(e) => setFilterRatingRange(e.target.value)}>
-                  <option value="">Todas as notas</option>
-                  <option value="low">Mal avaliadas (&lt; 4.0★)</option>
-                  <option value="high">Altamente avaliadas (&ge; 4.5★)</option>
-                </select>
-              </div>
-
-              {/* Oportunidade */}
-              <div className="input-group">
-                <label className="input-label-mini" style={{ color: 'var(--text-muted)' }}>Prioridade Comercial IA</label>
-                <select className="filter-select" style={{ width: '100%', height: '36px' }} value={filterOpportunity} onChange={(e) => setFilterOpportunity(e.target.value)}>
-                  <option value="">Todos os scores</option>
-                  <option value="80">Alta Oportunidade (&ge;80)</option>
-                  <option value="50">Média Oportunidade (&ge;50)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Checkboxes presence */}
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={filterNoWebsite} onChange={(e) => setFilterNoWebsite(e.target.checked)} />
-                Filtrar empresas sem website
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={filterNoInstagram} onChange={(e) => setFilterNoInstagram(e.target.checked)} />
-                Filtrar sem perfil de Instagram
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={filterNoFacebook} onChange={(e) => setFilterNoFacebook(e.target.checked)} />
-                Filtrar sem página de Facebook
-              </label>
-            </div>
-          </div>
-        </form>
-
-        {/* Searching Status Log Window */}
-        {loading && (
-          <div className="search-status-box" style={{ marginTop: '24px', padding: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-              <div className="loader-spinner" style={{ width: '16px', height: '16px', borderThickness: '2px', margin: 0 }}></div>
-              <h4 style={{ fontFamily: 'var(--font-heading)', color: '#fff', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                Robô de Prospecção Ativo
-              </h4>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-              Aguarde enquanto a IA executa varreduras de SEO, responsividade de layouts e frequência de posts sociais.
-            </p>
-            <div className="search-logs" style={{ maxHeight: '150px', overflowY: 'auto', padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.02)', borderRadius: '6px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--color-success)', lineHeight: '1.5' }}>
-              {logs.map((log, index) => (
-                <div key={index} style={{ marginBottom: '2px' }}>
-                  {`> ${log}`}
-                </div>
-              ))}
-              <div ref={logsEndRef}></div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Rich Search results list */}
-      {searchDone && !loading && (
-        <div className="animate-fade-in">
-          <h3 className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', color: '#fff', marginBottom: '16px' }}>
-            <CheckCircle size={18} style={{ color: 'var(--color-success)' }} />
-            Resultado da Captura ({foundLeads.length} leads qualificados adicionados ao CRM)
-          </h3>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {foundLeads.length > 0 ? (
-              foundLeads.map((lead, idx) => {
-                const isCopiedPhone = copiedKey === `phone_${idx}`;
-                const isCopiedWhatsapp = copiedKey === `whatsapp_${idx}`;
-
-                return (
-                  <div className="glass-card animate-fade-in" key={idx} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', border: '1px solid var(--border-color)', borderRadius: '12px', transition: 'transform 0.2s, border-color 0.2s' }}>
-                    
-                    {/* Top row: Name, Category, Opportunity Score */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-                      <div>
-                        <h4 style={{ fontWeight: '800', color: '#fff', fontSize: '1.1rem', margin: '0 0 4px 0' }}>{lead.name}</h4>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span className="crm-card-tag" style={{ margin: 0, fontSize: '0.7rem', backgroundColor: 'rgba(139, 92, 246, 0.08)', color: 'var(--accent-secondary)' }}>
-                            {lead.segment}
-                          </span>
-                          {lead.category && (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              • Categoria: {lead.category}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 'bold' }}>Prioridade</span>
-                        <span style={{ 
-                          fontWeight: '800', 
-                          color: lead.opportunity_score >= 80 ? 'var(--color-danger)' : (lead.opportunity_score >= 50 ? 'var(--color-warning)' : 'var(--color-success)'),
-                          fontSize: '1.2rem',
-                          lineHeight: 1
-                        }}>
-                          {lead.opportunity_score}/100
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Middle details: Location, rating, schedule */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', padding: '12px 14px', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', fontSize: '0.8rem' }}>
-                      <div style={{ display: 'flex', gap: '6px', color: 'var(--text-secondary)' }}>
-                        <MapPin size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-                        <span>{lead.address || `${lead.city}/${lead.state}`}</span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', gap: '6px', color: 'var(--text-secondary)' }}>
-                        <Clock size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-                        <span>{lead.schedule || 'Horário de funcionamento não disponível'}</span>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', color: 'var(--text-secondary)' }}>
-                        {lead.rating ? (
-                          <>
-                            <Star size={14} fill="var(--color-warning)" stroke="none" />
-                            <strong>{lead.rating}</strong>
-                            <span style={{ color: 'var(--text-muted)' }}>({lead.reviews_count} avaliações)</span>
-                          </>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>Sem avaliações no Maps</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Contact Links & Badges */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '12px' }}>
-                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        {/* Phone */}
-                        {lead.phone && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.02)', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid var(--border-color)' }}>
-                            <Phone size={12} style={{ color: 'var(--text-secondary)' }} />
-                            <span style={{ color: '#fff' }}>{lead.phone}</span>
-                            <button 
-                              type="button" 
-                              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
-                              onClick={() => handleCopy(lead.phone, 'phone', idx)}
-                            >
-                              {isCopiedPhone ? <Check size={10} style={{ color: 'var(--color-success)' }} /> : <Copy size={10} />}
-                            </button>
-                          </div>
-                        )}
-
-                        {/* WhatsApp */}
-                        {lead.whatsapp && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.05)', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid rgba(16, 185, 129, 0.15)' }}>
-                            <Phone size={12} style={{ color: 'var(--color-success)' }} />
-                            <span style={{ color: 'var(--color-success)', fontWeight: '600' }}>WhatsApp</span>
-                            <button 
-                              type="button" 
-                              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
-                              onClick={() => handleCopy(`55${lead.whatsapp.replace(/[^0-9]/g, '')}`, 'whatsapp', idx)}
-                            >
-                              {isCopiedWhatsapp ? <Check size={10} style={{ color: 'var(--color-success)' }} /> : <Copy size={10} />}
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Social Badges */}
-                        {lead.instagram && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--accent-secondary)' }}>
-                            <Instagram size={12} /> {lead.instagram}
-                          </span>
-                        )}
-                        {lead.email && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                            <Mail size={12} /> {lead.email}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Site Presence Badge */}
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {lead.has_website === 1 ? (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.05)', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.15)' }}>
-                            <Globe size={12} /> Possui Website
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.05)', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
-                            <ShieldAlert size={12} /> Oportunidade: Sem Site
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Footer Action Buttons */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '12px' }}>
-                      {lead.gmaps_link && (
-                        <a 
-                          href={lead.gmaps_link} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="btn-channel border"
-                          style={{ padding: '6px 12px', fontSize: '0.75rem' }}
-                        >
-                          <Eye size={12} /> Maps
-                        </a>
-                      )}
-                      
-                      {lead.website && (
-                        <a 
-                          href={lead.website} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="btn-channel border"
-                          style={{ padding: '6px 12px', fontSize: '0.75rem' }}
-                        >
-                          <Globe size={12} /> Visitar Site
-                        </a>
-                      )}
-
-                      <button 
-                        type="button" 
-                        className="btn-trigger-cron"
-                        style={{ width: 'auto', padding: '6px 12px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        onClick={() => onSelectLead(lead.id)}
-                      >
-                        Ver Perfil Completo <ChevronRight size={12} />
-                      </button>
-                    </div>
-
-                  </div>
-                );
-              })
-            ) : (
-              <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                Nenhuma empresa nova encontrada na região ou todas as empresas encontradas já estão cadastradas no CRM.
-              </div>
-            )}
+      <form className="prospecting-builder" onSubmit={submit}>
+        <div className="builder-section">
+          <div className="builder-step"><span>1</span><div><strong>Quem você quer encontrar?</strong><small>Defina o nicho e a localização</small></div></div>
+          <div className="builder-grid primary-fields">
+            <label className="field-shell">
+              <span>Nicho ou tipo de empresa</span>
+              <div><Search size={17} /><input value={form.query} onChange={(e) => update('query', e.target.value)} placeholder="Ex.: clínicas odontológicas" required /></div>
+            </label>
+            <label className="field-shell">
+              <span>Cidade</span>
+              <div><MapPin size={17} /><input value={form.city} onChange={(e) => update('city', e.target.value)} placeholder="São Paulo" required /></div>
+            </label>
+            <label className="field-shell">
+              <span>Bairro ou região <em>opcional</em></span>
+              <div><Building2 size={17} /><input value={form.region} onChange={(e) => update('region', e.target.value)} placeholder="Ex.: Pinheiros" /></div>
+            </label>
           </div>
         </div>
-      )}
+
+        <div className="builder-section">
+          <div className="builder-step"><span>2</span><div><strong>Qual oportunidade você quer vender?</strong><small>A qualificação prioriza empresas com essa necessidade</small></div></div>
+          <div className="need-grid">
+            {NEEDS.map(({ id, label, hint, icon: Icon }) => (
+              <button type="button" key={id} className={`need-card ${form.need === id ? 'selected' : ''}`} onClick={() => update('need', id)}>
+                <span className="need-icon"><Icon size={19} /></span><span><strong>{label}</strong><small>{hint}</small></span>{form.need === id && <Check className="need-check" size={15} />}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="advanced-wrap">
+          <button type="button" className="advanced-toggle" onClick={() => setAdvanced((value) => !value)}><SlidersHorizontal size={16} /> Ajustar filtros avançados <ChevronDown size={15} className={advanced ? 'rotated' : ''} /></button>
+          {advanced && <div className="advanced-grid">
+            <label><span>Raio</span><select value={form.radius} onChange={(e) => update('radius', e.target.value)}><option value="5">5 km</option><option value="15">15 km</option><option value="30">30 km</option><option value="50">50 km</option></select></label>
+            <label><span>Mínimo de avaliações</span><select value={form.minReviews} onChange={(e) => update('minReviews', e.target.value)}><option value="0">Qualquer volume</option><option value="10">10+</option><option value="30">30+</option><option value="100">100+</option></select></label>
+            <label><span>Nota máxima</span><select value={form.maxRating} onChange={(e) => update('maxRating', e.target.value)}><option value="">Qualquer nota</option><option value="4">Até 4,0</option><option value="4.3">Até 4,3</option><option value="4.6">Até 4,6</option></select></label>
+            <label><span>Quantidade</span><select value={form.limit} onChange={(e) => update('limit', e.target.value)}><option value="10">Até 10</option><option value="20">Até 20</option><option value="40">Até 40</option></select></label>
+            <label className="check-field"><input type="checkbox" checked={form.onlyNoWebsite} onChange={(e) => update('onlyNoWebsite', e.target.checked)} /><span>Somente empresas sem site</span></label>
+            <label className="check-field"><input type="checkbox" checked={form.onlyNoInstagram} onChange={(e) => update('onlyNoInstagram', e.target.checked)} /><span>Somente empresas sem Instagram</span></label>
+          </div>}
+        </div>
+
+        {error && <div className="inline-error">{error}</div>}
+        <div className="builder-action">
+          <div><strong>Busca pronta</strong><span>{form.query || 'Seu nicho'} · {form.city}{form.region ? `, ${form.region}` : ''} · {selectedNeed?.label}</span></div>
+          <button className="launch-search" disabled={loading || !form.query.trim() || !form.city.trim()}>{loading ? <><LoaderCircle className="spin" size={18} /> Qualificando empresas...</> : <>Encontrar oportunidades <ArrowRight size={18} /></>}</button>
+        </div>
+      </form>
+
+      {summary && !loading && <section className="search-results">
+        <div className="results-heading"><div><span className="eyebrow"><Check size={13} /> Busca concluída</span><h2>{summary.count} oportunidades encontradas</h2><p>Ordenadas pela aderência à oferta de {summary.need.toLowerCase()}.</p></div><span className={`source-badge ${summary.realData ? 'real' : ''}`}>{summary.realData ? 'Dados do Google Places' : 'Modo demonstração'}</span></div>
+        <div className="results-list">
+          {results.map((lead, index) => <button type="button" className="result-row" key={lead.id || index} onClick={() => lead.id && onSelectLead(lead.id)}>
+            <span className="result-rank">{String(index + 1).padStart(2, '0')}</span>
+            <span className="result-company"><strong>{lead.name}</strong><small><MapPin size={12} /> {lead.address || lead.city}</small></span>
+            <span className="result-signal"><Star size={14} /> {lead.rating || '—'} <small>({lead.reviews_count || 0})</small></span>
+            <span className="result-gaps">{!lead.website && <i>Sem site</i>}{!lead.instagram && <i>Sem Instagram</i>}</span>
+            <span className="result-score"><small>Oportunidade</small><strong>{lead.opportunity_score || 0}</strong></span>
+            <ArrowRight size={17} />
+          </button>)}
+        </div>
+      </section>}
     </div>
   );
 }

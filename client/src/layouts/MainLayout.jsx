@@ -1,95 +1,30 @@
-import React from 'react';
-import { LayoutDashboard, Search, Kanban, Settings, RefreshCw, Layers, Building2 } from 'lucide-react';
+import { BarChart3, Building2, Kanban, MapPinned, RefreshCw, Search, Settings, Sparkles } from 'lucide-react';
+
+const NAV = [
+  { id: 'dashboard', label: 'Visão geral', icon: BarChart3 },
+  { id: 'search', label: 'Encontrar clientes', icon: Search, primary: true },
+  { id: 'companies', label: 'Leads capturados', icon: Building2 },
+  { id: 'crm', label: 'Pipeline', icon: Kanban },
+];
 
 export default function MainLayout({ children, currentView, onViewChange, title, triggerAutomation, triggeringAutomation }) {
-  return (
-    <div className="app-container animate-fade-in">
-      {/* Sidebar Navigation */}
-      <aside className="sidebar">
-        <div className="logo-container">
-          <div className="logo-icon">
-            <Layers size={20} />
-          </div>
-          <span className="logo-text">AgenticLeads</span>
-        </div>
-
-        <ul className="nav-links">
-          <li>
-            <a
-              className={`nav-item ${currentView === 'companies' ? 'active' : ''}`}
-              onClick={() => onViewChange('companies')}
-            >
-              <Building2 size={18} />
-              Empresas
-            </a>
-          </li>
-          <li>
-            <a 
-              className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
-              onClick={() => onViewChange('dashboard')}
-            >
-              <LayoutDashboard size={18} />
-              Painel
-            </a>
-          </li>
-          <li>
-            <a 
-              className={`nav-item ${currentView === 'search' ? 'active' : ''}`}
-              onClick={() => onViewChange('search')}
-            >
-              <Search size={18} />
-              Busca Ativa
-            </a>
-          </li>
-          <li>
-            <a 
-              className={`nav-item ${currentView === 'crm' ? 'active' : ''}`}
-              onClick={() => onViewChange('crm')}
-            >
-              <Kanban size={18} />
-              CRM Kanban
-            </a>
-          </li>
-          <li>
-            <a 
-              className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
-              onClick={() => onViewChange('settings')}
-            >
-              <Settings size={18} />
-              Configurações
-            </a>
-          </li>
-        </ul>
-
-        <div className="sidebar-footer">
-          <p>AgenticLeads CRM v1.0.0</p>
-          <p style={{ fontSize: '0.7rem' }}>Focado em Prospecção Digital</p>
-        </div>
-      </aside>
-
-      {/* Main Panel Wrapper */}
-      <main className="main-content">
-        {/* Top Header Bar */}
-        <header className="top-bar">
-          <h2 className="page-title">{title}</h2>
-          
-          <div className="top-bar-actions">
-            <button 
-              className="btn-trigger-cron" 
-              onClick={triggerAutomation}
-              disabled={triggeringAutomation}
-            >
-              <RefreshCw size={14} className={triggeringAutomation ? 'spin' : ''} />
-              {triggeringAutomation ? 'Processando...' : 'Rodar Automações'}
-            </button>
-          </div>
-        </header>
-
-        {/* Content Render Area */}
-        <div className="content-wrapper">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
+  return <div className="app-container">
+    <aside className="sidebar">
+      <button className="brand" onClick={() => onViewChange('dashboard')}>
+        <span><MapPinned size={21} /></span><div><strong>LeadMap</strong><small>prospecção local</small></div>
+      </button>
+      <div className="nav-label">Workspace</div>
+      <nav className="nav-links">
+        {NAV.map(({ id, label, icon: Icon, primary }) => <button key={id} className={`nav-item ${currentView === id ? 'active' : ''} ${primary ? 'nav-primary' : ''}`} onClick={() => onViewChange(id)}><Icon size={17} /><span>{label}</span>{primary && <Sparkles size={13} className="nav-spark" />}</button>)}
+      </nav>
+      <div className="sidebar-bottom">
+        <button className={`nav-item ${currentView === 'settings' ? 'active' : ''}`} onClick={() => onViewChange('settings')}><Settings size={17} /><span>Configurações</span></button>
+        <div className="workspace-status"><i /><div><strong>Workspace ativo</strong><small>Dados protegidos</small></div></div>
+      </div>
+    </aside>
+    <main className="main-content">
+      <header className="top-bar"><div><span className="top-context">LeadMap /</span><h2 className="page-title">{title}</h2></div><button className="automation-button" onClick={triggerAutomation} disabled={triggeringAutomation}><RefreshCw size={14} className={triggeringAutomation ? 'spin' : ''} />{triggeringAutomation ? 'Processando...' : 'Executar follow-ups'}</button></header>
+      <div className="content-wrapper">{children}</div>
+    </main>
+  </div>;
 }

@@ -330,7 +330,19 @@ async function searchRealPlaces(query, city, apiKey) {
   }
 }
 
-export const searchCompanies = async (query, city) => {
+const matchesCriteria = (lead, criteria = {}) => {
+  if (criteria.minReviews && Number(lead.reviews_count || 0) < criteria.minReviews) return false;
+  if (criteria.maxRating !== undefined && criteria.maxRating !== null && criteria.maxRating !== '' && Number(lead.rating || 0) > Number(criteria.maxRating)) return false;
+  if (criteria.onlyNoWebsite && lead.website) return false;
+  if (criteria.onlyNoInstagram && lead.instagram) return false;
+  if (criteria.need === 'website' && lead.website) return false;
+  if (criteria.need === 'social_media' && lead.instagram && Number(lead.followers || 0) > 1500) return false;
+  if (criteria.need === 'whatsapp' && lead.whatsapp && lead.website) return false;
+  if (criteria.need === 'traffic' && Number(lead.rating || 0) < 4) return false;
+  return true;
+};
+
+export const searchCompanies = async (query, city, criteria = {}) => {
   // Check if Google Places API key is set in database
   let apiKey = '';
   try {
@@ -341,11 +353,13 @@ export const searchCompanies = async (query, city) => {
 
   if (apiKey && apiKey.trim() !== '') {
     console.log(`Usando Google Places API real com a chave configurada para: ${query} em ${city}...`);
-    return await searchRealPlaces(query, city, apiKey);
+    const locationQuery = criteria.region ? `${query} em ${criteria.region}` : query;
+    const leads = await searchRealPlaces(locationQuery, city, apiKey);
+    return leads.filter((lead) => matchesCriteria(lead, criteria)).slice(0, criteria.limit || 20);
   } else {
     console.log(`Chave Google Places API não encontrada. Usando gerador de simulação avançada para: ${query} em ${city}...`);
     // Wait for 1.5 seconds to simulate API lag
     await new Promise(resolve => setTimeout(resolve, 1500));
-    return generateMockLeads(query, city);
+    return generateMockLeads(query, city).filter((lead) => matchesCriteria(lead, criteria)).slice(0, criteria.limit || 20);
   }
 };

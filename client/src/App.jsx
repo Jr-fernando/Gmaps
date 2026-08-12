@@ -45,7 +45,7 @@ function AppInner() {
         />
       ) : (
         <>
-          {currentView === 'dashboard' && <DashboardPage />}
+          {currentView === 'dashboard' && <DashboardPage onNavigate={onViewChange} />}
           {currentView === 'search' && (
             <SearchPage 
               onSearchComplete={triggerRefresh} 

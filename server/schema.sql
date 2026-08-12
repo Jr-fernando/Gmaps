@@ -1,82 +1,81 @@
--- Schema SQL para o Supabase (AgenticLeads SaaS)
+create extension if not exists "uuid-ossp";
 
--- Habilitar extensão UUID caso necessário
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Criar tabela de leads
-CREATE TABLE IF NOT EXISTS leads (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    segment TEXT,
-    category TEXT,
-    phone TEXT,
-    whatsapp TEXT,
-    email TEXT,
-    website TEXT,
-    instagram TEXT,
-    facebook TEXT,
-    city TEXT,
-    state TEXT,
-    address TEXT,
-    rating REAL,
-    reviews_count INTEGER,
-    followers INTEGER,
-    description TEXT,
-    gmaps_link TEXT,
-    latitude REAL,
-    longitude REAL,
-    status TEXT DEFAULT 'Novo Lead',
-    opportunity_score INTEGER DEFAULT 0,
-    has_website INTEGER DEFAULT 0,
-    website_analysis JSONB,
-    social_analysis JSONB,
-    ai_report TEXT,
-    first_message TEXT,
-    owner TEXT, -- Responsável do CRM
-    value_negotiated REAL DEFAULT 0, -- Valor negociado
-    next_action TEXT, -- Próxima ação comercial
-    notes TEXT, -- Observações do CRM
-    schedule TEXT, -- Horário de funcionamento
-    reviews JSONB, -- Avaliações (JSON Array)
-    gallery JSONB, -- Galeria de fotos (JSON Array)
-    first_contact_date TIMESTAMP WITH TIME ZONE, -- Data do primeiro contato
-    last_contact_date TIMESTAMP WITH TIME ZONE, -- Último contato
-    history JSONB, -- Histórico de interações (JSON Array)
-    proposal_text TEXT, -- Proposta enviada
-    proposal_sent BOOLEAN DEFAULT FALSE, -- Flag de proposta enviada
-    labels JSONB DEFAULT '[]', -- Etiquetas (JSON Array)
-    probability INTEGER DEFAULT 50, -- Probabilidade de conversão (0-100)
-    next_contact_date TIMESTAMP WITH TIME ZONE, -- Data do próximo contato
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_name_city UNIQUE (name, city)
+create table if not exists public.leads (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  segment text,
+  category text,
+  phone text,
+  whatsapp text,
+  email text,
+  website text,
+  instagram text,
+  facebook text,
+  city text,
+  state text,
+  address text,
+  rating real,
+  reviews_count integer default 0,
+  followers integer default 0,
+  description text,
+  gmaps_link text,
+  latitude real,
+  longitude real,
+  status text not null default 'Novo Lead',
+  opportunity_score integer not null default 0 check (opportunity_score between 0 and 100),
+  has_website integer not null default 0,
+  website_analysis jsonb default '{}'::jsonb,
+  social_analysis jsonb default '{}'::jsonb,
+  ai_report text,
+  first_message text,
+  owner text,
+  value_negotiated numeric(12,2) default 0,
+  next_action text,
+  notes text,
+  schedule text,
+  reviews jsonb default '[]'::jsonb,
+  gallery jsonb default '[]'::jsonb,
+  first_contact_date timestamptz,
+  last_contact_date timestamptz,
+  history jsonb default '[]'::jsonb,
+  proposal_text text,
+  proposal_sent boolean default false,
+  labels jsonb default '[]'::jsonb,
+  probability integer default 50 check (probability between 0 and 100),
+  next_contact_date timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint leads_name_city_unique unique (name, city)
 );
 
--- Criar tabela de follow-ups
-CREATE TABLE IF NOT EXISTS follow_ups (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    lead_id UUID REFERENCES leads(id) ON DELETE CASCADE,
-    sequence_day INTEGER,
-    message TEXT,
-    status TEXT DEFAULT 'Agendado',
-    scheduled_for TIMESTAMP WITH TIME ZONE,
-    sent_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+create table if not exists public.follow_ups (
+  id uuid primary key default uuid_generate_v4(),
+  lead_id uuid not null references public.leads(id) on delete cascade,
+  sequence_day integer,
+  message text,
+  status text not null default 'Agendado',
+  scheduled_for timestamptz,
+  sent_at timestamptz,
+  created_at timestamptz not null default now()
 );
 
--- Criar tabela de configurações (Key-Value)
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+create table if not exists public.settings (
+  key text primary key,
+  value text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
--- Índices para melhoria de performance em consultas frequentes
-CREATE INDEX IF NOT EXISTS idx_leads_city ON leads(city);
-CREATE INDEX IF NOT EXISTS idx_leads_segment ON leads(segment);
-CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
-CREATE INDEX IF NOT EXISTS idx_leads_opportunity_score ON leads(opportunity_score);
-CREATE INDEX IF NOT EXISTS idx_leads_status_created_at ON leads(status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_leads_city_score ON leads(city, opportunity_score DESC);
-CREATE INDEX IF NOT EXISTS idx_follow_ups_status_scheduled ON follow_ups(status, scheduled_for);
+create index if not exists leads_city_idx on public.leads(city);
+create index if not exists leads_segment_idx on public.leads(segment);
+create index if not exists leads_status_created_idx on public.leads(status, created_at desc);
+create index if not exists leads_opportunity_idx on public.leads(opportunity_score desc);
+create index if not exists follow_ups_scheduled_idx on public.follow_ups(status, scheduled_for);
+create index if not exists follow_ups_lead_id_idx on public.follow_ups(lead_id);
+
+alter table public.leads enable row level security;
+alter table public.follow_ups enable row level security;
+alter table public.settings enable row level security;
+
+revoke all on table public.leads, public.follow_ups, public.settings from anon, authenticated;
+grant select, insert, update, delete on table public.leads, public.follow_ups, public.settings to service_role;

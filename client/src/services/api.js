@@ -52,11 +52,12 @@ export const leadService = {
     return handleResponse(res);
   },
 
-  searchLeads: async (query, city) => {
+  searchLeads: async (criteria, legacyCity) => {
+    const payload = typeof criteria === 'string' ? { query: criteria, city: legacyCity } : criteria;
     const res = await apiFetch('/api/leads/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, city })
+      body: JSON.stringify(payload)
     });
     return handleResponse(res);
   },

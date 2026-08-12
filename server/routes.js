@@ -94,11 +94,11 @@ router.get('/dashboard/stats', async (req, res) => {
 
 // 2. Leads search triggering
 router.post('/leads/search', validateLeadSearch, async (req, res) => {
-  const { query, city } = req.body;
+  const { query, city, ...criteria } = req.body;
   
   try {
     console.log(`[API] Iniciando busca ativa para segmento '${query}' em '${city}'...`);
-    const leads = await searchCompanies(query, city);
+    const leads = await searchCompanies(query, city, criteria);
 
     const addedLeads = [];
     for (const lead of leads) {
