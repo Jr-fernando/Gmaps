@@ -77,4 +77,6 @@ CREATE INDEX IF NOT EXISTS idx_leads_city ON leads(city);
 CREATE INDEX IF NOT EXISTS idx_leads_segment ON leads(segment);
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_opportunity_score ON leads(opportunity_score);
+CREATE INDEX IF NOT EXISTS idx_leads_status_created_at ON leads(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_leads_city_score ON leads(city, opportunity_score DESC);
 CREATE INDEX IF NOT EXISTS idx_follow_ups_status_scheduled ON follow_ups(status, scheduled_for);

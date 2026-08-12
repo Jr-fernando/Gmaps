@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { automationService } from '../services/api';
-
-const AppContext = createContext();
+import { AppContext } from './contextStore';
 
 export const AppProvider = ({ children }) => {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -45,6 +44,7 @@ export const AppProvider = ({ children }) => {
     switch (currentView) {
       case 'dashboard': return 'Painel de Controle';
       case 'search': return 'Busca Ativa de Empresas';
+      case 'companies': return 'Base de Empresas Capturadas';
       case 'crm': return 'Funil de Vendas CRM';
       case 'settings': return 'Configurações e Integrações';
       default: return 'AgenticLeads';
@@ -66,12 +66,4 @@ export const AppProvider = ({ children }) => {
       {children}
     </AppContext.Provider>
   );
-};
-
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp deve ser usado dentro de um AppProvider');
-  }
-  return context;
 };

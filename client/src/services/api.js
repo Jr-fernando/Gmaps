@@ -15,10 +15,17 @@ const handleResponse = async (response) => {
 };
 
 const apiFetch = (url, options = {}) => {
-  const token = import.meta.env.VITE_API_TOKEN;
-  const headers = new Headers(options.headers || {});
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(url, { ...options, headers });
+  return fetch(url, { ...options, credentials: 'same-origin' });
+};
+
+export const authService = {
+  session: async () => handleResponse(await fetch('/api/auth/session')),
+  login: async (password) => handleResponse(await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  })),
+  logout: async () => fetch('/api/auth/logout', { method: 'POST' })
 };
 
 export const dashboardService = {

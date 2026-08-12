@@ -17,6 +17,7 @@ export default function DashboardPage() {
     segmentsRank: []
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     dashboardService.getStats()
@@ -25,6 +26,7 @@ export default function DashboardPage() {
         setLoading(false);
       })
       .catch(err => {
+        setError('Não foi possível carregar os indicadores. Tente atualizar a página.');
         console.error('Erro ao buscar estatísticas do painel:', err);
         setLoading(false);
       });
@@ -36,6 +38,10 @@ export default function DashboardPage() {
         <div className="loader-spinner"></div>
       </div>
     );
+  }
+
+  if (error) {
+    return <div className="empty-state" role="alert"><p>{error}</p><button className="btn-search" onClick={() => window.location.reload()}>Tentar novamente</button></div>;
   }
 
   const maxSegmentCount = stats.segmentsRank.length > 0 

@@ -10,6 +10,16 @@ import { isSafeExternalUrl } from './utils/validation.js';
 
 const router = express.Router();
 
+router.get('/health', async (req, res) => {
+  try {
+    await dbService.settings.getSettings();
+    res.json({ status: 'healthy', database: dbService.isSupabase() ? 'supabase' : 'sqlite', timestamp: new Date().toISOString() });
+  } catch (err) {
+    console.error('[Healthcheck Error]:', err.message);
+    res.status(503).json({ status: 'unhealthy' });
+  }
+});
+
 // Helper to schedule follow-ups
 async function scheduleFollowUpsForLead(leadId, companyName, contactName) {
   // Clear any existing scheduled follow-ups first
@@ -62,7 +72,6 @@ router.get('/dashboard/stats', async (req, res) => {
   try {
     const stats = await dbService.leads.getStats();
     
-    // Hardcoded demo values for value sold and responses conversion to make metrics gorgeous
     const conversionRate = stats.totalLeads > 0 
       ? parseFloat(((stats.closed / stats.totalLeads) * 100).toFixed(1)) 
       : 0;
@@ -73,9 +82,9 @@ router.get('/dashboard/stats', async (req, res) => {
 
     res.json({
       ...stats,
-      responseRate: responseRate || 34.5, // fallback for empty db aesthetics
-      conversionRate: conversionRate || 12.0, // fallback for empty db aesthetics
-      valueSold: (stats.closed || 0) * 2500, // Safe calculation
+      responseRate,
+      conversionRate,
+      valueSold: stats.valueSold || 0,
     });
   } catch (err) {
     console.error('[API Stats Error]:', err.message);

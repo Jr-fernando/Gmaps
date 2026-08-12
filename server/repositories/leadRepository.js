@@ -44,6 +44,12 @@ export const leadRepository = {
           .eq('status', 'Perdido');
         if (errLost) throw errLost;
 
+        const { data: valueData, error: errValue } = await supabase
+          .from('leads')
+          .select('value_negotiated')
+          .eq('status', 'Cliente');
+        if (errValue) throw errValue;
+
         const { data: segmentData, error: errSegment } = await supabase.from('leads').select('segment');
         if (errSegment) throw errSegment;
         
@@ -67,6 +73,7 @@ export const leadRepository = {
           replies: replies || 0,
           closed: closed || 0,
           lost: lost || 0,
+          valueSold: (valueData || []).reduce((total, lead) => total + Number(lead.value_negotiated || 0), 0),
           segmentsRank
         };
       } catch (err) {
@@ -88,6 +95,7 @@ export const leadRepository = {
       const replies = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status IN ('Respondeu', 'Negociação', 'Proposta enviada', 'Cliente')");
       const closed = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status = 'Cliente'");
       const lost = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status = 'Perdido'");
+      const valueSold = await dbGet("SELECT COALESCE(SUM(value_negotiated), 0) as total FROM leads WHERE status = 'Cliente'");
       
       const segments = await dbAll(
         `SELECT segment, COUNT(*) as count 
@@ -104,6 +112,7 @@ export const leadRepository = {
         replies: replies.count,
         closed: closed.count,
         lost: lost.count,
+        valueSold: valueSold.total,
         segmentsRank: segments
       };
     }

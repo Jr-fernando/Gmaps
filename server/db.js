@@ -171,6 +171,8 @@ export const initDb = async () => {
   } catch (e) {
     if (!String(e.message).includes('already exists')) throw e;
   }
+  await dbRun('CREATE INDEX IF NOT EXISTS idx_leads_status_created_at ON leads(status, created_at DESC)');
+  await dbRun('CREATE INDEX IF NOT EXISTS idx_leads_city_score ON leads(city, opportunity_score DESC)');
 
   // Follow-ups table
   await dbRun(`

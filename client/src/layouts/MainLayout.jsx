@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Search, Kanban, Settings, RefreshCw, Layers } from 'lucide-react';
+import { LayoutDashboard, Search, Kanban, Settings, RefreshCw, Layers, Building2 } from 'lucide-react';
 
 export default function MainLayout({ children, currentView, onViewChange, title, triggerAutomation, triggeringAutomation }) {
   return (
@@ -14,6 +14,15 @@ export default function MainLayout({ children, currentView, onViewChange, title,
         </div>
 
         <ul className="nav-links">
+          <li>
+            <a
+              className={`nav-item ${currentView === 'companies' ? 'active' : ''}`}
+              onClick={() => onViewChange('companies')}
+            >
+              <Building2 size={18} />
+              Empresas
+            </a>
+          </li>
           <li>
             <a 
               className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}

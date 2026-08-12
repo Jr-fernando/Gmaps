@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import './App.css';
-import { AppProvider, useApp } from './contexts/AppContext';
+import { AppProvider } from './contexts/AppContext';
+import { useApp } from './contexts/contextStore';
 
 // Layout
 import MainLayout from './layouts/MainLayout';
@@ -9,8 +10,11 @@ import MainLayout from './layouts/MainLayout';
 import DashboardPage from './pages/DashboardPage';
 import SearchPage from './pages/SearchPage';
 import CRMBoardPage from './pages/CRMBoardPage';
+import CompaniesPage from './pages/CompaniesPage';
 import SettingsPage from './pages/SettingsPage';
 import CompanyDetailsPage from './pages/CompanyDetailsPage';
+import LoginPage from './pages/LoginPage';
+import { authService } from './services/api';
 
 function AppInner() {
   const {
@@ -54,6 +58,9 @@ function AppInner() {
               refreshTrigger={refreshTrigger}
             />
           )}
+          {currentView === 'companies' && (
+            <CompaniesPage onSelectLead={onSelectLead} refreshTrigger={refreshTrigger} />
+          )}
           {currentView === 'settings' && <SettingsPage />}
         </>
       )}
@@ -62,6 +69,21 @@ function AppInner() {
 }
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(null);
+
+  useEffect(() => {
+    authService.session()
+      .then(({ authenticated: isAuthenticated }) => setAuthenticated(isAuthenticated))
+      .catch(() => setAuthenticated(false));
+  }, []);
+
+  if (authenticated === null) {
+    return <div className="app-loading"><div className="loader-spinner" /></div>;
+  }
+  if (!authenticated) {
+    return <LoginPage onAuthenticated={() => setAuthenticated(true)} />;
+  }
+
   return (
     <AppProvider>
       <AppInner />

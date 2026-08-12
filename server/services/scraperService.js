@@ -233,7 +233,7 @@ async function searchRealPlaces(query, city, apiKey) {
   const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchStr)}&key=${apiKey}&language=pt-BR`;
   
   try {
-    const response = await axios.get(url);
+    const response = await axios.get(url, { timeout: 8000, maxRedirects: 0 });
     if (response.data.status !== 'OK') {
       throw new Error(`Google Places API Error: ${response.data.status}`);
     }
@@ -247,7 +247,7 @@ async function searchRealPlaces(query, city, apiKey) {
       
       let details = {};
       try {
-        const detailsRes = await axios.get(detailsUrl);
+        const detailsRes = await axios.get(detailsUrl, { timeout: 8000, maxRedirects: 0 });
         if (detailsRes.data.status === 'OK') {
           details = detailsRes.data.result;
         }

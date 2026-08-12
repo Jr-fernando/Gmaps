@@ -94,7 +94,12 @@ export const analyzePresence = async (lead) => {
     
     try {
       // Setup timeout so it doesn't hang the system
-      const response = await axios.get(lead.website, { timeout: 3000 });
+      const response = await axios.get(lead.website, {
+        timeout: 3000,
+        maxContentLength: 1024 * 1024,
+        maxRedirects: 3,
+        responseType: 'text'
+      });
       html = response.data;
       loadTimeSeconds = parseFloat(((Date.now() - start) / 1000).toFixed(2));
       websiteAnalysis.hasSsl = lead.website.startsWith('https');

@@ -1,0 +1,84 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./agenticleads.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id            String    @id @default(cuid())
+  placeId       String    @unique
+  name          String
+  category      String?
+  phone         String?
+  whatsapp      String?
+  website       String?
+  instagram     String?
+  address       String?
+  city          String?
+  state         String?
+  lat           Float?
+  lng           Float?
+  rating        Float?
+  totalReviews  Int?
+  googleMapsUrl String?
+  searchQuery   String?
+  photos        String?   // JSON array de referências ou URLs de fotos
+  weekdayText   String?   // JSON array de horários por dia da semana
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  analysis  Analysis?
+  crmEntry  CrmEntry?
+}
+
+model Analysis {
+  id                  String   @id @default(cuid())
+  companyId           String   @unique
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  score               Int?
+  summary             String?
+  problems            String?
+  opportunities       String?
+  recommendedServices String?
+  priority            String?
+  prospectMessage     String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model CrmEntry {
+  id        String    @id @default(cuid())
+  companyId String    @unique
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  status    String    @default("novo_lead")
+  notes     CrmNote[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model CrmNote {
+  id         String   @id @default(cuid())
+  crmEntryId String
+  crmEntry   CrmEntry @relation(fields: [crmEntryId], references: [id], onDelete: Cascade)
+  content    String
+  createdAt  DateTime @default(now())
+}
+
+model SearchLog {
+  id           String   @id @default(cuid())
+  query        String
+  city         String
+  segment      String
+  radius       Int
+  resultsCount Int
+  createdAt    DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+

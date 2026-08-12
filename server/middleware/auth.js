@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { getSessionToken } from '../routes/auth.js';
 
 dotenv.config();
 const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
@@ -18,7 +19,7 @@ export const requireApiAuth = (req, res, next) => {
   }
 
   const authorization = req.get('authorization') || '';
-  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : getSessionToken(req);
   if (token !== configuredToken) {
     return res.status(401).json({ error: 'Não autorizado.' });
   }
