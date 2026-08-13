@@ -264,6 +264,32 @@ export const leadRepository = {
     }
   },
 
+  getLeadsByIds: async (ids = []) => {
+    const cleanIds = [...new Set(ids.map(String).filter(Boolean))].slice(0, 100);
+    if (!cleanIds.length) return [];
+
+    let rows = [];
+    if (isSupabaseEnabled) {
+      const { data, error } = await supabase.from('leads').select('*').in('id', cleanIds);
+      if (error) throw error;
+      rows = data || [];
+    } else {
+      const placeholders = cleanIds.map(() => '?').join(',');
+      rows = await dbAll(`SELECT * FROM leads WHERE CAST(id AS TEXT) IN (${placeholders})`, cleanIds);
+    }
+
+    const byId = new Map(rows.map((lead) => [String(lead.id), {
+      ...lead,
+      website_analysis: parseJson(lead.website_analysis, {}),
+      social_analysis: parseJson(lead.social_analysis, {}),
+      reviews: parseJson(lead.reviews, []),
+      gallery: parseJson(lead.gallery, []),
+      history: parseJson(lead.history, []),
+      labels: parseJson(lead.labels, []),
+    }]));
+    return cleanIds.map((id) => byId.get(id)).filter(Boolean);
+  },
+
   // 4. Buscar lead existente
   findLeadByNameAndCity: async (name, city) => {
     if (isSupabaseEnabled) {

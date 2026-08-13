@@ -123,7 +123,8 @@ export const leadService = {
 };
 
 export const searchService = {
-  getSaved: async () => handleResponse(await apiFetch('/api/searches'))
+  getSaved: async () => handleResponse(await apiFetch('/api/searches')),
+  getById: async (id) => handleResponse(await apiFetch(`/api/searches/${id}`))
 };
 
 export const settingsService = {

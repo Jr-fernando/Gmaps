@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { leadService } from '../services/api';
 
+const normalizeArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+};
+
 export default function useLeadDetails(leadId, onLeadUpdated) {
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,7 +35,12 @@ export default function useLeadDetails(leadId, onLeadUpdated) {
     setLoading(true);
     try {
       const data = await leadService.getLeadById(leadId);
-      setLead(data);
+      const normalizedData = {
+        ...data,
+        history: normalizeArray(data.history),
+        followUps: normalizeArray(data.followUps),
+      };
+      setLead(normalizedData);
       setCrmOwner(data.owner || '');
       setCrmValue(data.value_negotiated || '');
       setCrmNextAction(data.next_action || '');
@@ -37,7 +48,7 @@ export default function useLeadDetails(leadId, onLeadUpdated) {
       setCrmStatus(data.status || 'Novo Lead');
       setCrmFirstContactDate(data.first_contact_date || '');
       setCrmLastContactDate(data.last_contact_date || '');
-      setCrmHistory(data.history || []);
+      setCrmHistory(normalizedData.history);
       setCrmProposalSent(data.proposal_sent === 1 || data.proposal_sent === true);
       setCrmProposalText(data.proposal_text || '');
       

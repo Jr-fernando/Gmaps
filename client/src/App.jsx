@@ -12,6 +12,7 @@ import SearchPage from './pages/SearchPage';
 import CRMBoardPage from './pages/CRMBoardPage';
 import CompaniesPage from './pages/CompaniesPage';
 import SettingsPage from './pages/SettingsPage';
+import MessagesPage from './pages/MessagesPage';
 import CompanyDetailsPage from './pages/CompanyDetailsPage';
 import LoginPage from './pages/LoginPage';
 import AppErrorBoundary from './components/AppErrorBoundary';
@@ -38,23 +39,26 @@ function AppInner() {
       triggerAutomation={triggerAutomation}
       triggeringAutomation={triggeringAutomation}
     >
-      {selectedLeadId ? (
-        <AppErrorBoundary onRecover={() => onViewChange(currentView)}>
-          <CompanyDetailsPage
-            leadId={selectedLeadId}
-            onBack={() => onViewChange(currentView)}
-            onLeadUpdated={triggerRefresh}
-          />
-        </AppErrorBoundary>
-      ) : (
-        <>
-          {currentView === 'dashboard' && <DashboardPage onNavigate={onViewChange} />}
-          {currentView === 'search' && (
-            <SearchPage 
-              onSearchComplete={triggerRefresh} 
+      <>
+        {currentView === 'search' && (
+          <div hidden={Boolean(selectedLeadId)}>
+            <SearchPage
+              onSearchComplete={triggerRefresh}
               onSelectLead={onSelectLead}
             />
-          )}
+          </div>
+        )}
+        {selectedLeadId ? (
+          <AppErrorBoundary onRecover={() => onViewChange(currentView)}>
+            <CompanyDetailsPage
+              leadId={selectedLeadId}
+              onBack={() => onViewChange(currentView)}
+              onLeadUpdated={triggerRefresh}
+            />
+          </AppErrorBoundary>
+        ) : (
+          <>
+          {currentView === 'dashboard' && <DashboardPage onNavigate={onViewChange} />}
           {currentView === 'crm' && (
             <CRMBoardPage 
               onSelectLead={onSelectLead} 
@@ -65,8 +69,10 @@ function AppInner() {
             <CompaniesPage onSelectLead={onSelectLead} refreshTrigger={refreshTrigger} />
           )}
           {currentView === 'settings' && <SettingsPage />}
-        </>
-      )}
+          {currentView === 'messages' && <MessagesPage onLeadUpdated={triggerRefresh} />}
+          </>
+        )}
+      </>
     </MainLayout>
   );
 }

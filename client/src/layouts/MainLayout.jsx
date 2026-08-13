@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { BarChart3, Building2, Kanban, MapPinned, RefreshCw, Search, Settings, Sparkles } from 'lucide-react';
+import { BarChart3, Building2, Kanban, MapPinned, MessageCircle, RefreshCw, Search, Settings, Sparkles } from 'lucide-react';
 
 const NAV = [
   { id: 'dashboard', label: 'Visão geral', icon: BarChart3 },
   { id: 'search', label: 'Encontrar clientes', icon: Search, primary: true },
   { id: 'companies', label: 'Leads capturados', icon: Building2 },
+  { id: 'messages', label: 'Chat e mensagens', icon: MessageCircle },
   { id: 'crm', label: 'Pipeline', icon: Kanban },
 ];
 

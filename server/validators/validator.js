@@ -23,6 +23,7 @@ export const validateLeadSearch = (req, res, next) => {
   req.body.sortMode = ['vulnerable', 'easiest', 'hardest', 'reputation'].includes(req.body.sortMode) ? req.body.sortMode : 'vulnerable';
   req.body.onlyNoWebsite = Boolean(req.body.onlyNoWebsite);
   req.body.onlyNoInstagram = Boolean(req.body.onlyNoInstagram);
+  req.body.excludeSaved = req.body.excludeSaved !== false;
   next();
 };
 
