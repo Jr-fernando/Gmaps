@@ -10,6 +10,7 @@ import { processPendingFollowUps } from './services/cronService.js';
 import { validateLeadSearch, validateCrmUpdate, validateLeadId, validateMessage } from './validators/validator.js';
 import { dispatchWebhookEvent } from './services/webhookService.js';
 import { isSafeExternalUrl } from './utils/validation.js';
+import { buildContactExport } from './services/exportService.js';
 
 const router = express.Router();
 
@@ -31,6 +32,7 @@ const registerLeadContact = async (lead, channel, message, type = 'message_sent'
     labels: lead.labels || [], probability: lead.probability || 50,
     next_contact_date: lead.next_contact_date || '',
   });
+  if (type === 'message_sent') await dbService.leads.setArchived([lead.id], true);
   return dbService.leads.getLeadById(lead.id);
 };
 
@@ -305,7 +307,8 @@ router.get('/leads', async (req, res) => {
       whatsapp: req.query.whatsapp,
       phone: req.query.phone,
       min_rating: req.query.min_rating,
-      min_reviews: req.query.min_reviews
+      min_reviews: req.query.min_reviews,
+      archived: req.query.archived,
     };
 
     const leads = await dbService.leads.searchLeads(filters);
@@ -337,6 +340,8 @@ router.put('/leads/:id/status', validateLeadId, validateCrmUpdate, async (req, r
 
   try {
     await dbService.leads.updateLeadStatus(req.params.id, status);
+    if (status === 'Mensagem enviada') await dbService.leads.setArchived([req.params.id], true);
+    if (status === 'Novo Lead') await dbService.leads.setArchived([req.params.id], false);
     const updated = await dbService.leads.getLeadById(req.params.id);
     
     // Dispatch webhook event
@@ -346,6 +351,29 @@ router.put('/leads/:id/status', validateLeadId, validateCrmUpdate, async (req, r
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.put('/leads/archive', async (req, res) => {
+  try {
+    const leadIds = [...new Set((req.body?.leadIds || []).map(String).filter(Boolean))].slice(0, 5000);
+    if (!leadIds.length) return res.status(400).json({ error: 'Selecione ao menos uma empresa.' });
+    const archived = req.body?.archived !== false;
+    const updated = await dbService.leads.setArchived(leadIds, archived);
+    res.json({ success: true, updated, archived });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/leads/export', async (req, res) => {
+  try {
+    const leadIds = [...new Set((req.body?.leadIds || []).map(String).filter(Boolean))].slice(0, 5000);
+    if (!leadIds.length) return res.status(400).json({ error: 'Selecione ao menos uma empresa para exportar.' });
+    const leads = await dbService.leads.getLeadsByIds(leadIds);
+    const result = await buildContactExport(String(req.body?.format || '').toLowerCase(), leads);
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('X-Exported-Count', String(result.exported));
+    res.send(result.buffer);
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 // 6. Update complete CRM lead details

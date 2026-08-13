@@ -134,6 +134,8 @@ export const initDb = async () => {
       history TEXT, -- JSON
       proposal_text TEXT,
       proposal_sent INTEGER DEFAULT 0,
+      archived INTEGER DEFAULT 0,
+      archived_at TEXT,
       created_at TEXT,
       updated_at TEXT,
       UNIQUE(name, city)
@@ -165,6 +167,8 @@ export const initDb = async () => {
   await addColumnSafe('labels', 'TEXT DEFAULT "[]"');
   await addColumnSafe('probability', 'INTEGER DEFAULT 50');
   await addColumnSafe('next_contact_date', 'TEXT');
+  await addColumnSafe('archived', 'INTEGER DEFAULT 0');
+  await addColumnSafe('archived_at', 'TEXT');
 
   try {
     await dbRun(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_name_city ON leads(name, city)`);
@@ -173,6 +177,13 @@ export const initDb = async () => {
   }
   await dbRun('CREATE INDEX IF NOT EXISTS idx_leads_status_created_at ON leads(status, created_at DESC)');
   await dbRun('CREATE INDEX IF NOT EXISTS idx_leads_city_score ON leads(city, opportunity_score DESC)');
+  await dbRun('CREATE INDEX IF NOT EXISTS idx_leads_archived_created ON leads(archived, created_at DESC)');
+  await dbRun(`
+    UPDATE leads
+    SET archived = 1,
+        archived_at = COALESCE(archived_at, last_contact_date, updated_at, datetime('now'))
+    WHERE status = 'Mensagem enviada' AND archived = 0
+  `);
 
   // Follow-ups table
   await dbRun(`

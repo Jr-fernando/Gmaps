@@ -44,6 +44,8 @@ create table if not exists public.leads (
   labels jsonb default '[]'::jsonb,
   probability integer default 50 check (probability between 0 and 100),
   next_contact_date timestamptz,
+  archived boolean not null default false,
+  archived_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint leads_name_city_unique unique (name, city)
@@ -111,6 +113,7 @@ create index if not exists leads_city_idx on public.leads(city);
 create index if not exists leads_segment_idx on public.leads(segment);
 create index if not exists leads_status_created_idx on public.leads(status, created_at desc);
 create index if not exists leads_opportunity_idx on public.leads(opportunity_score desc);
+create index if not exists leads_archived_created_idx on public.leads(archived, created_at desc);
 create index if not exists follow_ups_scheduled_idx on public.follow_ups(status, scheduled_for);
 create index if not exists follow_ups_lead_id_idx on public.follow_ups(lead_id);
 

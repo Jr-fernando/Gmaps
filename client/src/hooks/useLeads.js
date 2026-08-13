@@ -39,7 +39,11 @@ export default function useLeads(filters = {}, refreshTrigger = 0) {
 
   const updateLeadStatus = async (leadId, targetStatus) => {
     // Optimistic update
-    setLeads(prev => prev.map(l => l.id.toString() === leadId.toString() ? { ...l, status: targetStatus } : l));
+    setLeads(prev => prev.map(l => l.id.toString() === leadId.toString() ? {
+      ...l, status: targetStatus,
+      archived: targetStatus === 'Mensagem enviada' ? true : (targetStatus === 'Novo Lead' ? false : l.archived),
+      archived_at: targetStatus === 'Mensagem enviada' ? new Date().toISOString() : (targetStatus === 'Novo Lead' ? null : l.archived_at),
+    } : l));
     
     try {
       await leadService.updateStatus(leadId, targetStatus);
