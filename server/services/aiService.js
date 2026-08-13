@@ -2,16 +2,17 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import { dbService } from './dbService.js';
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
 const generateWithGemini = async (apiKey, prompt, { json = false } = {}) => {
   const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
+  const response = await ai.interactions.create({
     model: GEMINI_MODEL,
-    contents: prompt,
-    config: json ? { responseMimeType: 'application/json' } : undefined,
+    input: prompt,
+    store: false,
+    response_format: json ? { type: 'text', mime_type: 'application/json' } : undefined,
   });
-  return response.text;
+  return response.output_text || '';
 };
 
 // Fallback Portuguese generator if no API key is provided
