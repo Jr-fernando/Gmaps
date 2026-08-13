@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot, Check, Copy, Instagram, Mail, MessageCircle, Search, Send, ShieldCheck, Sparkles, WandSparkles } from 'lucide-react';
 import { leadService, outreachService } from '../services/api';
 
@@ -29,12 +29,12 @@ export default function MessagesPage({ onLeadUpdated }) {
   const [notice, setNotice] = useState('');
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [leadData, connectionData, messageData] = await Promise.all([leadService.getLeads(), outreachService.getConnections(), outreachService.getMessages()]);
     setLeads(leadData || []); setConnections(connectionData); setQueue(messageData || []);
-    if (leadData?.length && !selectedId) setSelectedId(String(leadData[0].id));
-  };
-  useEffect(() => { load().catch((error) => setNotice(error.message)).finally(() => setLoading(false)); }, []);
+    if (leadData?.length) setSelectedId((current) => current || String(leadData[0].id));
+  }, []);
+  useEffect(() => { load().catch((error) => setNotice(error.message)).finally(() => setLoading(false)); }, [load]);
 
   const selectedLead = useMemo(() => leads.find((lead) => String(lead.id) === selectedId), [leads, selectedId]);
   const activeMessage = useMemo(() => queue.find((item) => item.id === activeMessageId), [queue, activeMessageId]);

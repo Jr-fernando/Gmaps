@@ -382,12 +382,15 @@ Para dar início ao projeto, basta entrar em contato clicando no botão abaixo o
 export const chatWithLeadAi = async (lead, userMessage, history = []) => {
   const geminiKey = await getApiKey('gemini');
   const openaiKey = await getApiKey('openai');
+  const settings = await dbService.settings.getSettings();
 
-  const systemInstructions = `Você é um agente comercial e assistente de prospecção da agência de serviços digitais.
-  Você está analisando a empresa ${lead.name} (${lead.segment}) na cidade de ${lead.city}/${lead.state}.
-  Responda à solicitação do usuário gerando o conteúdo necessário (como e-mails, ajustes de orçamentos, respostas a dúvidas de clientes). 
-  Sempre responda de forma prestativa, profissional e orientada a fechar vendas. Mantenha o foco em português do Brasil.
-  Nunca invente contatos, métricas ou fatos sobre a empresa. Diferencie explicitamente dados verificados, inferências e informações ainda não verificadas.`;
+  const systemInstructions = `Você é o copiloto comercial especialista em prospecção B2B local do LeadMap.
+  Agência: serviços ${settings.agency_services || 'digitais'}; oferta principal: ${settings.agency_offer || 'diagnóstico consultivo'}; tom: ${settings.outreach_tone || 'humano e direto'}.
+  Empresa analisada: ${JSON.stringify(compactLead(lead))}.
+  Sua missão é reduzir o trabalho do vendedor: identificar o melhor gancho verificável, sugerir o serviço mais aderente, escolher o canal existente, preparar mensagem natural e indicar uma única próxima ação.
+  Trate a conversa como um funil: descoberta → permissão → diagnóstico → reunião → proposta → acompanhamento. Não tente fechar tudo na primeira mensagem.
+  Regras: português do Brasil; não inventar contatos, preços, métricas, dores, atividade social, nome do dono ou resultados; ausência de dado significa “não verificado”; separar fato de hipótese; evitar promessas e frases genéricas; não repetir contatos já feitos no histórico; respeitar pedido de não contato.
+  Ao criar mensagem, entregue texto pronto, curto, específico e adequado ao canal. Ao sugerir estratégia, use: Evidência observável, Hipótese a validar, Serviço aderente, Melhor canal, Abordagem e Próxima ação.`;
 
   const messagesList = [
     { role: 'system', content: systemInstructions },
@@ -420,10 +423,11 @@ export const chatWithLeadAi = async (lead, userMessage, history = []) => {
   // Fallback chat responses
   const msgLower = userMessage.toLowerCase();
   if (msgLower.includes('orçamento') || msgLower.includes('preço') || msgLower.includes('custo')) {
-    return `Olá! Analisando a empresa **${lead.name}**, posso propor um orçamento inicial focado em desenvolvimento de Landing Page e automação de atendimento por WhatsApp. O valor ficaria em torno de R$ 3.500,00, podendo ser parcelado em até 3x. Deseja que eu elabore uma proposta comercial em PDF com este valor?`;
+    return `Ainda não há preço aprovado nos dados da **${lead.name}**. Antes de cotar, valide escopo, prazo e objetivo. Posso montar três opções — essencial, recomendada e completa — sem inventar valores, para você preencher com sua tabela comercial.`;
   }
   if (msgLower.includes('whatsapp') || msgLower.includes('mensagem')) {
-    return `Com base na presença de **${lead.name}**, sugiro enviar uma mensagem focada no fato de que eles possuem ótimas avaliações no Google Maps, mas não possuem site para fechar o contato direto. Veja este rascunho:\n\n"Olá! Vi suas ótimas avaliações no Google. Gostaria de saber se têm interesse em criar um site para automatizar os agendamentos pelo WhatsApp?"`;
+    const evidence = lead.rating ? `a avaliação ${lead.rating} no Google` : `a presença local da empresa`;
+    return `Olá! Encontrei a ${lead.name} ao pesquisar empresas de ${lead.segment || lead.category || 'serviços locais'} em ${lead.city || 'sua região'} e chamou atenção ${evidence}. Trabalho com ${settings.agency_services || 'estratégia digital'} e identifiquei uma ideia que pode ser útil. Posso te enviar um diagnóstico curto, sem compromisso?`;
   }
 
   return `Entendi sua solicitação sobre a empresa **${lead.name}**. Posso te ajudar a redigir mensagens, criar escopos específicos de serviço ou tirar dúvidas para preparar a reunião comercial. Como deseja prosseguir?`;
@@ -437,10 +441,15 @@ const compactLead = (lead) => ({
   rating: lead.rating || null,
   reviews: lead.reviews_count || 0,
   opportunityScore: lead.opportunity_score || 0,
+  hasWebsite: Boolean(lead.website || lead.has_website),
   website: lead.website || null,
   instagram: lead.instagram || null,
+  facebook: lead.facebook || null,
   email: lead.email || null,
   whatsapp: lead.whatsapp || lead.phone || null,
+  status: lead.status || 'Novo Lead',
+  lastContact: lead.last_contact_date || null,
+  previousInteractions: Array.isArray(lead.history) ? lead.history.slice(-3) : [],
   qualification: lead.website_analysis?.qualification || lead.social_analysis?.qualification || null,
 });
 
@@ -471,6 +480,10 @@ Regras obrigatórias:
 - Use somente os dados fornecidos. Nunca invente Instagram, e-mail, seguidores, atividade, faturamento ou intenção de compra.
 - Um campo ausente é "não verificado", não uma fraqueza comprovada.
 - Aponte o motivo de forma curta e prática.
+- Equilibre cinco sinais: aderência aos serviços, necessidade observável, reputação, canal verificável e estágio do CRM.
+- Não confunda empresa pequena, falta de Instagram ou dado ausente com vulnerabilidade.
+- Recomende uma próxima ação específica e diferente para cada lead; se já houve contato, use o histórico para não repetir a primeira abordagem.
+- Dê preferência a uma conversa útil e consentida, não a volume de mensagens.
 - Retorne todos os IDs recebidos, sem duplicar.
 - Responda apenas JSON no formato:
 {"summary":"resumo curto","recommendations":[{"leadId":"id","score":0,"reason":"motivo","approach":"próxima ação"}]}`;
@@ -501,12 +514,12 @@ const recipientFor = (lead, channel) => channel === 'email' ? lead.email : (chan
 
 const localOutreachPlan = (leads, settings) => leads.map((lead) => {
   const channel = bestChannelFor(lead);
-  const service = lead.website ? 'presença digital e conversão' : 'site ou landing page orientada a conversão';
+  const service = lead.website ? 'melhoria da jornada digital e conversão' : 'site ou landing page orientada a conversão';
   return {
     leadId: String(lead.id),
     channel,
     subject: channel === 'email' ? `Uma ideia para a ${lead.name}` : '',
-    message: `Olá! Encontrei a ${lead.name} ao analisar empresas de ${lead.segment || lead.category || 'serviços locais'} em ${lead.city || 'sua região'}. ${lead.rating ? `A avaliação de ${lead.rating} no Google mostra uma reputação local muito boa. ` : ''}Percebi uma oportunidade em ${service}. Trabalho com ${settings.agency_services || 'estratégia digital, conteúdo e automação'} e preparei uma sugestão objetiva para vocês. Posso enviar?`,
+    message: `Olá! Encontrei a ${lead.name} ao analisar empresas de ${lead.segment || lead.category || 'serviços locais'} em ${lead.city || 'sua região'}. ${lead.rating ? `A avaliação de ${lead.rating} no Google mostra uma reputação local muito boa. ` : ''}Percebi uma oportunidade em ${service} e preparei uma sugestão objetiva para vocês. Posso enviar?`,
     rationale: `Canal escolhido entre os contatos públicos disponíveis. A abordagem usa somente segmento, cidade, avaliação e presença digital verificáveis.`,
   };
 }).filter((item) => item.channel);
@@ -531,6 +544,10 @@ Regras obrigatórias:
 - Escolha apenas um canal que realmente exista: email, whatsapp ou instagram.
 - A primeira mensagem deve pedir permissão para continuar; não prometa resultado e não use pressão artificial.
 - Personalize cada mensagem, mantendo entre 45 e 100 palavras.
+- O gancho deve vir de uma evidência positiva ou oportunidade verificável, nunca de uma crítica agressiva.
+- Leve em conta o status e as três últimas interações; não reinicie a conversa se já houve contato.
+- Escolha um único serviço principal e uma próxima ação simples. Não liste todos os serviços da agência.
+- Varie estrutura e vocabulário entre empresas para evitar mensagens com aparência automatizada.
 - Retorne todos os leads que tenham algum canal disponível.
 - Responda somente JSON: {"plans":[{"leadId":"id","channel":"email|whatsapp|instagram","subject":"assunto ou vazio","message":"mensagem","rationale":"motivo curto"}]}`;
   const promptHash = createHash('sha256').update(`${GEMINI_MODEL}:${prompt}`).digest('hex');

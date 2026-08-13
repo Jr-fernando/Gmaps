@@ -9,7 +9,7 @@ export const leadRepository = {
   getStats: async () => {
     if (isSupabaseEnabled) {
       try {
-        const { count: totalLeads, error: errTotal } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+        const { count: totalLeads, error: errTotal } = await supabase.from('leads').select('*', { count: 'exact', head: true }).eq('archived', false);
         if (errTotal) throw errTotal;
 
         const todayStr = new Date().toISOString().slice(0, 10);
@@ -17,40 +17,46 @@ export const leadRepository = {
         const { count: newLeadsToday, error: errNew } = await supabase
           .from('leads')
           .select('*', { count: 'exact', head: true })
+          .eq('archived', false)
           .or(`created_at.gte.${todayStr}T00:00:00Z,status.eq.Novo Lead`);
         if (errNew) throw errNew;
 
         const { count: messagesSent, error: errSent } = await supabase
           .from('leads')
           .select('*', { count: 'exact', head: true })
+          .eq('archived', false)
           .not('status', 'in', '("Novo Lead","Entrar em contato")');
         if (errSent) throw errSent;
 
         const { count: replies, error: errReplies } = await supabase
           .from('leads')
           .select('*', { count: 'exact', head: true })
+          .eq('archived', false)
           .in('status', ['Respondeu', 'Negociação', 'Proposta enviada', 'Cliente']);
         if (errReplies) throw errReplies;
 
         const { count: closed, error: errClosed } = await supabase
           .from('leads')
           .select('*', { count: 'exact', head: true })
+          .eq('archived', false)
           .eq('status', 'Cliente');
         if (errClosed) throw errClosed;
 
         const { count: lost, error: errLost } = await supabase
           .from('leads')
           .select('*', { count: 'exact', head: true })
+          .eq('archived', false)
           .eq('status', 'Perdido');
         if (errLost) throw errLost;
 
         const { data: valueData, error: errValue } = await supabase
           .from('leads')
           .select('value_negotiated')
+          .eq('archived', false)
           .eq('status', 'Cliente');
         if (errValue) throw errValue;
 
-        const { data: segmentData, error: errSegment } = await supabase.from('leads').select('segment');
+        const { data: segmentData, error: errSegment } = await supabase.from('leads').select('segment').eq('archived', false);
         if (errSegment) throw errSegment;
         
         const segmentCounts = {};
@@ -89,17 +95,17 @@ export const leadRepository = {
         };
       }
     } else {
-      const totalLeads = await dbGet('SELECT COUNT(*) as count FROM leads');
-      const newLeads = await dbGet("SELECT COUNT(*) as count FROM leads WHERE date(created_at) = date('now') OR status = 'Novo Lead'");
-      const messagesSent = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status NOT IN ('Novo Lead', 'Entrar em contato')");
-      const replies = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status IN ('Respondeu', 'Negociação', 'Proposta enviada', 'Cliente')");
-      const closed = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status = 'Cliente'");
-      const lost = await dbGet("SELECT COUNT(*) as count FROM leads WHERE status = 'Perdido'");
-      const valueSold = await dbGet("SELECT COALESCE(SUM(value_negotiated), 0) as total FROM leads WHERE status = 'Cliente'");
+      const totalLeads = await dbGet('SELECT COUNT(*) as count FROM leads WHERE COALESCE(archived, 0) = 0');
+      const newLeads = await dbGet("SELECT COUNT(*) as count FROM leads WHERE COALESCE(archived, 0) = 0 AND (date(created_at) = date('now') OR status = 'Novo Lead')");
+      const messagesSent = await dbGet("SELECT COUNT(*) as count FROM leads WHERE COALESCE(archived, 0) = 0 AND status NOT IN ('Novo Lead', 'Entrar em contato')");
+      const replies = await dbGet("SELECT COUNT(*) as count FROM leads WHERE COALESCE(archived, 0) = 0 AND status IN ('Respondeu', 'Negociação', 'Proposta enviada', 'Cliente')");
+      const closed = await dbGet("SELECT COUNT(*) as count FROM leads WHERE COALESCE(archived, 0) = 0 AND status = 'Cliente'");
+      const lost = await dbGet("SELECT COUNT(*) as count FROM leads WHERE COALESCE(archived, 0) = 0 AND status = 'Perdido'");
+      const valueSold = await dbGet("SELECT COALESCE(SUM(value_negotiated), 0) as total FROM leads WHERE COALESCE(archived, 0) = 0 AND status = 'Cliente'");
       
       const segments = await dbAll(
         `SELECT segment, COUNT(*) as count 
-         FROM leads 
+         FROM leads WHERE COALESCE(archived, 0) = 0
          GROUP BY segment 
          ORDER BY count DESC 
          LIMIT 5`
@@ -122,7 +128,7 @@ export const leadRepository = {
   searchLeads: async (filters = {}) => {
     const { 
       city, state, segment, status, has_website, min_score, query,
-      instagram, facebook, whatsapp, phone, min_rating, min_reviews
+      instagram, facebook, whatsapp, phone, min_rating, min_reviews, archived
     } = filters;
 
     if (isSupabaseEnabled) {
@@ -131,6 +137,7 @@ export const leadRepository = {
       if (state) q = q.ilike('state', `%${state}%`);
       if (segment) q = q.ilike('segment', `%${segment}%`);
       if (status) q = q.eq('status', status);
+      if (archived !== 'all') q = q.eq('archived', archived === '1');
       if (has_website !== undefined && has_website !== '') q = q.eq('has_website', parseInt(has_website));
       if (min_score) q = q.gte('opportunity_score', parseInt(min_score));
       if (query) q = q.or(`name.ilike.%${query}%,description.ilike.%${query}%`);
@@ -172,6 +179,10 @@ export const leadRepository = {
       if (status) {
         sql += ' AND status = ?';
         params.push(status);
+      }
+      if (archived !== 'all') {
+        sql += ' AND COALESCE(archived, 0) = ?';
+        params.push(archived === '1' ? 1 : 0);
       }
       if (has_website !== undefined && has_website !== '') {
         sql += ' AND has_website = ?';
@@ -265,7 +276,7 @@ export const leadRepository = {
   },
 
   getLeadsByIds: async (ids = []) => {
-    const cleanIds = [...new Set(ids.map(String).filter(Boolean))].slice(0, 100);
+    const cleanIds = [...new Set(ids.map(String).filter(Boolean))].slice(0, 5000);
     if (!cleanIds.length) return [];
 
     let rows = [];
@@ -461,6 +472,20 @@ export const leadRepository = {
       const result = await dbRun('UPDATE leads SET status = ?, updated_at = ? WHERE id = ?', [status, now, id]);
       if (!result.changes) throw new Error('Lead não encontrado');
     }
+  },
+
+  setArchived: async (ids, archived) => {
+    const cleanIds = [...new Set((ids || []).map(String).filter(Boolean))].slice(0, 5000);
+    if (!cleanIds.length) return 0;
+    const now = new Date().toISOString();
+    if (isSupabaseEnabled) {
+      const { data, error } = await supabase.from('leads').update({ archived: Boolean(archived), archived_at: archived ? now : null, updated_at: now }).in('id', cleanIds).select('id');
+      if (error) throw error;
+      return data?.length || 0;
+    }
+    const placeholders = cleanIds.map(() => '?').join(',');
+    const result = await dbRun(`UPDATE leads SET archived = ?, archived_at = ?, updated_at = ? WHERE CAST(id AS TEXT) IN (${placeholders})`, [archived ? 1 : 0, archived ? now : null, now, ...cleanIds]);
+    return result.changes || 0;
   },
 
   // 7. Atualizar dados completos do CRM

@@ -128,6 +128,20 @@ export const leadService = {
       body: JSON.stringify({ leadIds, objective })
     });
     return handleResponse(res);
+  },
+
+  setArchived: async (leadIds, archived = true) => handleResponse(await apiFetch('/api/leads/archive', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadIds, archived })
+  })),
+
+  exportContacts: async (leadIds, format) => {
+    const response = await apiFetch('/api/leads/export', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadIds, format })
+    });
+    if (!response.ok) return handleResponse(response);
+    const disposition = response.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `leadmap-contatos.${format}`;
+    return { blob: await response.blob(), filename, exported: Number(response.headers.get('x-exported-count')) || 0 };
   }
 };
 
