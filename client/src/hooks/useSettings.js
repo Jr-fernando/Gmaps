@@ -58,9 +58,8 @@ export default function useSettings() {
     setSaving(true);
     setSuccessMsg('');
     try {
-      const payload = Object.fromEntries(
-        Object.entries(settings).filter(([key, value]) => !key.endsWith('_api_key') || String(value || '').trim())
-      );
+      const secretFields = new Set(['gemini_api_key', 'openai_api_key', 'claude_api_key', 'google_places_api_key', 'resend_api_key', 'meta_access_token']);
+      const payload = Object.fromEntries(Object.entries(settings).filter(([key, value]) => !secretFields.has(key) || String(value || '').trim()));
       const data = await settingsService.saveSettings(payload);
       if (data.success) {
         setSuccessMsg('Configurações salvas com sucesso!');

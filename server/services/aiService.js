@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import { dbService } from './dbService.js';
+import { createHash } from 'node:crypto';
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
@@ -492,5 +493,89 @@ Regras obrigatórias:
   } catch (error) {
     console.error('[Gemini Prioritization Error]:', error.message);
     return localPrioritization(leads);
+  }
+};
+
+const bestChannelFor = (lead) => lead.email ? 'email' : ((lead.whatsapp || lead.phone) ? 'whatsapp' : (lead.instagram ? 'instagram' : ''));
+const recipientFor = (lead, channel) => channel === 'email' ? lead.email : (channel === 'instagram' ? (lead.instagram_link || lead.instagram) : (lead.whatsapp || lead.phone));
+
+const localOutreachPlan = (leads, settings) => leads.map((lead) => {
+  const channel = bestChannelFor(lead);
+  const service = lead.website ? 'presença digital e conversão' : 'site ou landing page orientada a conversão';
+  return {
+    leadId: String(lead.id),
+    channel,
+    subject: channel === 'email' ? `Uma ideia para a ${lead.name}` : '',
+    message: `Olá! Encontrei a ${lead.name} ao analisar empresas de ${lead.segment || lead.category || 'serviços locais'} em ${lead.city || 'sua região'}. ${lead.rating ? `A avaliação de ${lead.rating} no Google mostra uma reputação local muito boa. ` : ''}Percebi uma oportunidade em ${service}. Trabalho com ${settings.agency_services || 'estratégia digital, conteúdo e automação'} e preparei uma sugestão objetiva para vocês. Posso enviar?`,
+    rationale: `Canal escolhido entre os contatos públicos disponíveis. A abordagem usa somente segmento, cidade, avaliação e presença digital verificáveis.`,
+  };
+}).filter((item) => item.channel);
+
+export const createOutreachPlan = async (leads, objective = '') => {
+  const settings = await dbService.settings.getSettings();
+  const geminiKey = await getApiKey('gemini');
+  const leadData = leads.map(compactLead);
+  const prompt = `Você é o agente comercial do LeadMap. Prepare uma primeira abordagem consultiva para cada empresa.
+
+Perfil da agência:
+- Serviços: ${settings.agency_services || 'social media, edição, tráfego pago, sites e automação'}
+- Oferta: ${settings.agency_offer || 'diagnóstico gratuito de presença digital'}
+- Tom: ${settings.outreach_tone || 'humano, direto, respeitoso e sem pressão'}
+- Objetivo desta rodada: ${String(objective || 'iniciar uma conversa e pedir permissão para apresentar um diagnóstico').slice(0, 500)}
+
+Empresas: ${JSON.stringify(leadData)}
+
+Regras obrigatórias:
+- Use somente fatos presentes nos dados. Nunca invente nome do dono, e-mail, seguidores, problema, faturamento ou atividade social.
+- Campo vazio significa não verificado.
+- Escolha apenas um canal que realmente exista: email, whatsapp ou instagram.
+- A primeira mensagem deve pedir permissão para continuar; não prometa resultado e não use pressão artificial.
+- Personalize cada mensagem, mantendo entre 45 e 100 palavras.
+- Retorne todos os leads que tenham algum canal disponível.
+- Responda somente JSON: {"plans":[{"leadId":"id","channel":"email|whatsapp|instagram","subject":"assunto ou vazio","message":"mensagem","rationale":"motivo curto"}]}`;
+  const promptHash = createHash('sha256').update(`${GEMINI_MODEL}:${prompt}`).digest('hex');
+  const generationId = await dbService.outreach.createGeneration({ purpose: 'outreach_plan', promptHash, model: geminiKey ? GEMINI_MODEL : 'local-heuristic', leadIds: leads.map((lead) => String(lead.id)) });
+  try {
+    let plans;
+    let provider = 'local';
+    if (geminiKey) {
+      try {
+        const parsed = JSON.parse(await generateWithGemini(geminiKey, prompt, { json: true }));
+        const byId = new Map(leads.map((lead) => [String(lead.id), lead]));
+        plans = (parsed.plans || []).filter((plan) => {
+          const lead = byId.get(String(plan.leadId));
+          return lead && ['email', 'whatsapp', 'instagram'].includes(plan.channel) && recipientFor(lead, plan.channel);
+        }).map((plan) => ({ leadId: String(plan.leadId), channel: plan.channel, subject: String(plan.subject || '').slice(0, 180), message: String(plan.message || '').slice(0, 3000), rationale: String(plan.rationale || '').slice(0, 500) }));
+        if (!plans.length) throw new Error('A IA não retornou abordagens válidas.');
+        provider = 'gemini';
+      } catch (error) {
+        console.error('[Gemini Outreach Fallback]:', error.message);
+        plans = localOutreachPlan(leads, settings);
+        provider = 'local-fallback';
+      }
+    } else {
+      plans = localOutreachPlan(leads, settings);
+    }
+    const byId = new Map(leads.map((lead) => [String(lead.id), lead]));
+    const messages = [];
+    for (const plan of plans) {
+      const lead = byId.get(plan.leadId);
+      if (!lead) continue;
+      messages.push(await dbService.outreach.createMessage({
+        leadId: lead.id,
+        generationId,
+        channel: plan.channel,
+        recipient: recipientFor(lead, plan.channel),
+        subject: plan.subject,
+        message: plan.message,
+        provider,
+        metadata: { rationale: plan.rationale, verifiedOnly: true },
+      }));
+    }
+    await dbService.outreach.completeGeneration(generationId, { plans, messageIds: messages.map((item) => item.id) });
+    return { generationId, provider, messages };
+  } catch (error) {
+    await dbService.outreach.failGeneration(generationId, error.message);
+    throw error;
   }
 };

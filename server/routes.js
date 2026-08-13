@@ -3,7 +3,8 @@ import { dbService } from './services/dbService.js';
 import { searchCompanies } from './services/scraperService.js';
 import { analyzePresence, enrichLeadPublicContacts } from './services/presenceService.js';
 import { qualifyLead, sortQualifiedLeads } from './services/qualificationService.js';
-import { generateAiReport, generateProposalText, chatWithLeadAi, prioritizeLeadsWithAi } from './services/aiService.js';
+import { generateAiReport, generateProposalText, chatWithLeadAi, prioritizeLeadsWithAi, createOutreachPlan } from './services/aiService.js';
+import { deliverOutreachMessage, getChannelConnections } from './services/channelService.js';
 import { folderService } from './services/folderService.js';
 import { processPendingFollowUps } from './services/cronService.js';
 import { validateLeadSearch, validateCrmUpdate, validateLeadId, validateMessage } from './validators/validator.js';
@@ -11,6 +12,27 @@ import { dispatchWebhookEvent } from './services/webhookService.js';
 import { isSafeExternalUrl } from './utils/validation.js';
 
 const router = express.Router();
+
+const registerLeadContact = async (lead, channel, message, type = 'message_sent') => {
+  const now = new Date().toISOString();
+  const historyEntry = {
+    date: now,
+    type,
+    channel,
+    description: `${type === 'message_sent' ? 'Mensagem enviada' : 'Contato aberto'} via ${channel}: "${message.substring(0, 60)}${message.length > 60 ? '...' : ''}"`,
+  };
+  await dbService.leads.updateLeadCrm(lead.id, {
+    owner: lead.owner || '', value_negotiated: lead.value_negotiated || 0,
+    next_action: lead.next_action || '', notes: lead.notes || '',
+    status: type === 'message_sent' ? 'Mensagem enviada' : (lead.status || 'Entrar em contato'),
+    first_contact_date: lead.first_contact_date || now, last_contact_date: now,
+    history: [...(Array.isArray(lead.history) ? lead.history : []), historyEntry],
+    proposal_text: lead.proposal_text || '', proposal_sent: lead.proposal_sent || 0,
+    labels: lead.labels || [], probability: lead.probability || 50,
+    next_contact_date: lead.next_contact_date || '',
+  });
+  return dbService.leads.getLeadById(lead.id);
+};
 
 router.get('/health', async (req, res) => {
   try {
@@ -451,46 +473,78 @@ router.post('/leads/:id/send-message', validateLeadId, validateMessage, async (r
       return res.status(404).json({ error: 'Lead não encontrado' });
     }
 
-    console.log(`[API] Enviando mensagem via ${channel} para ${lead.name}...`);
-    
-    const now = new Date().toISOString();
-    const firstContactDate = lead.first_contact_date || now;
-    const lastContactDate = now;
-    
-    // Add interaction to history
-    const historyEntry = {
-      date: now,
-      type: 'message_sent',
-      channel: channel,
-      description: `Mensagem enviada via ${channel}: "${message.substring(0, 60)}${message.length > 60 ? '...' : ''}"`
-    };
-    const updatedHistory = Array.isArray(lead.history) ? [...lead.history, historyEntry] : [historyEntry];
-
-    await dbService.leads.updateLeadCrm(req.params.id, {
-      owner: lead.owner || '',
-      value_negotiated: lead.value_negotiated || 0,
-      next_action: lead.next_action || '',
-      notes: lead.notes || '',
-      status: 'Mensagem enviada',
-      first_contact_date: firstContactDate,
-      last_contact_date: lastContactDate,
-      history: updatedHistory,
-      proposal_text: lead.proposal_text || '',
-      proposal_sent: lead.proposal_sent || 0,
-      labels: lead.labels || [],
-      probability: lead.probability || 50,
-      next_contact_date: lead.next_contact_date || ''
-    });
-
-    const updated = await dbService.leads.getLeadById(req.params.id);
-    
-    // Dispatch Webhook Message event
-    dispatchWebhookEvent('MESSAGE_SENT', { lead: updated, channel, message });
-
-    res.json({ success: true, message: `Mensagem enviada com sucesso via ${channel}!` });
+    const updated = await registerLeadContact(lead, channel, message, 'contact_opened');
+    dispatchWebhookEvent('CONTACT_OPENED', { lead: updated, channel, message });
+    res.json({ success: true, message: `Contato via ${channel} registrado no CRM.` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.get('/outreach/connections', async (_req, res) => {
+  try { res.json(await getChannelConnections()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/outreach/messages', async (req, res) => {
+  try { res.json(await dbService.outreach.listMessages({ status: req.query.status || '', limit: req.query.limit || 100 })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/outreach/plan', async (req, res) => {
+  try {
+    const leadIds = [...new Set((req.body?.leadIds || []).map(String))].slice(0, 10);
+    if (!leadIds.length) return res.status(400).json({ error: 'Selecione ao menos um lead.' });
+    const leads = (await Promise.all(leadIds.map((id) => dbService.leads.getLeadById(id)))).filter(Boolean);
+    if (!leads.length) return res.status(404).json({ error: 'Nenhum lead foi encontrado.' });
+    res.json(await createOutreachPlan(leads, req.body?.objective || ''));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/outreach/messages/:id', async (req, res) => {
+  try {
+    const current = await dbService.outreach.getMessage(req.params.id);
+    if (!current) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+    const changes = {};
+    if (typeof req.body.subject === 'string') changes.subject = req.body.subject.slice(0, 180);
+    if (typeof req.body.message === 'string') changes.message = req.body.message.slice(0, 3000);
+    if (['draft', 'approved', 'cancelled'].includes(req.body.status)) changes.status = req.body.status;
+    if (req.body.metadata && typeof req.body.metadata === 'object') changes.metadata = { ...current.metadata, ...req.body.metadata };
+    res.json(await dbService.outreach.updateMessage(req.params.id, changes));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/outreach/messages/:id/send', async (req, res) => {
+  let item;
+  try {
+    item = await dbService.outreach.getMessage(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+    if (item.status !== 'approved') return res.status(409).json({ error: 'Revise e aprove a mensagem antes do envio.' });
+    const connections = await getChannelConnections();
+    const sentToday = (await dbService.outreach.listMessages({ status: 'sent', limit: 200 })).filter((message) => String(message.sent_at || '').slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
+    if (sentToday >= connections.dailyLimit) return res.status(429).json({ error: `Limite diário de ${connections.dailyLimit} envios atingido.` });
+    const delivery = await deliverOutreachMessage(item);
+    const sentAt = new Date().toISOString();
+    const message = await dbService.outreach.updateMessage(item.id, { status: 'sent', provider: delivery.provider, external_id: delivery.externalId, sent_at: sentAt, error: '' });
+    const lead = await dbService.leads.getLeadById(item.lead_id);
+    const updatedLead = await registerLeadContact(lead, item.channel, item.message, 'message_sent');
+    dispatchWebhookEvent('MESSAGE_SENT', { lead: updatedLead, channel: item.channel, message: item.message, externalId: delivery.externalId });
+    res.json({ success: true, message, lead: updatedLead });
+  } catch (err) {
+    if (item) await dbService.outreach.updateMessage(item.id, { status: 'failed', error: err.message }).catch(() => {});
+    res.status(502).json({ error: err.message });
+  }
+});
+
+router.post('/outreach/messages/:id/handoff', async (req, res) => {
+  try {
+    const item = await dbService.outreach.getMessage(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+    const message = await dbService.outreach.updateMessage(item.id, { status: 'handed_off' });
+    const lead = await dbService.leads.getLeadById(item.lead_id);
+    const updatedLead = await registerLeadContact(lead, item.channel, item.message, 'contact_opened');
+    res.json({ success: true, message, lead: updatedLead });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // 11. Chat with lead AI
