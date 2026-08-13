@@ -10,6 +10,7 @@ create table if not exists public.leads (
   email text,
   website text,
   instagram text,
+  instagram_link text,
   facebook text,
   city text,
   state text,

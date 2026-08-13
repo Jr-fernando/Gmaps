@@ -369,6 +369,7 @@ export const leadRepository = {
       email: leadData.email,
       website: leadData.website,
       instagram: leadData.instagram,
+      instagram_link: leadData.instagram_link,
       facebook: leadData.facebook,
       city: leadData.city,
       state: leadData.state,
@@ -416,17 +417,17 @@ export const leadRepository = {
     } else {
       const result = await dbRun(
         `INSERT INTO leads (
-          name, segment, category, phone, whatsapp, email, website, instagram, facebook,
+          name, segment, category, phone, whatsapp, email, website, instagram, instagram_link, facebook,
           city, state, address, rating, reviews_count, followers, description,
           gmaps_link, latitude, longitude, status, opportunity_score,
           has_website, website_analysis, social_analysis, ai_report, first_message,
           owner, value_negotiated, next_action, notes,
           schedule, reviews, gallery, first_contact_date, last_contact_date, history,
           proposal_text, proposal_sent, labels, probability, next_contact_date, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           insertData.name, insertData.segment, insertData.category, insertData.phone, insertData.whatsapp,
-          insertData.email, insertData.website, insertData.instagram, insertData.facebook, insertData.city,
+          insertData.email, insertData.website, insertData.instagram, insertData.instagram_link, insertData.facebook, insertData.city,
           insertData.state, insertData.address, insertData.rating, insertData.reviews_count, insertData.followers,
           insertData.description, insertData.gmaps_link, insertData.latitude, insertData.longitude, insertData.status,
           insertData.opportunity_score, insertData.has_website,

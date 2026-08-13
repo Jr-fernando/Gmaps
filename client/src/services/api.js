@@ -119,7 +119,33 @@ export const leadService = {
       body: JSON.stringify({ message, history })
     });
     return handleResponse(res);
+  },
+
+  prioritize: async (leadIds, objective = '') => {
+    const res = await apiFetch('/api/leads/ai-prioritize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadIds, objective })
+    });
+    return handleResponse(res);
   }
+};
+
+export const folderService = {
+  getAll: async () => handleResponse(await apiFetch('/api/folders')),
+  create: async (name) => handleResponse(await apiFetch('/api/folders', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+  })),
+  rename: async (id, name) => handleResponse(await apiFetch(`/api/folders/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+  })),
+  remove: async (id) => handleResponse(await apiFetch(`/api/folders/${id}`, { method: 'DELETE' })),
+  addLeads: async (id, leadIds) => handleResponse(await apiFetch(`/api/folders/${id}/leads`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadIds })
+  })),
+  removeLeads: async (id, leadIds) => handleResponse(await apiFetch(`/api/folders/${id}/leads`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadIds })
+  }))
 };
 
 export const searchService = {
