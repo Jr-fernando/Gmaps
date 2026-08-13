@@ -1,9 +1,10 @@
 import express from 'express';
 import { dbService } from './services/dbService.js';
 import { searchCompanies } from './services/scraperService.js';
-import { analyzePresence } from './services/presenceService.js';
+import { analyzePresence, enrichLeadPublicContacts } from './services/presenceService.js';
 import { qualifyLead, sortQualifiedLeads } from './services/qualificationService.js';
-import { generateAiReport, generateProposalText, chatWithLeadAi } from './services/aiService.js';
+import { generateAiReport, generateProposalText, chatWithLeadAi, prioritizeLeadsWithAi } from './services/aiService.js';
+import { folderService } from './services/folderService.js';
 import { processPendingFollowUps } from './services/cronService.js';
 import { validateLeadSearch, validateCrmUpdate, validateLeadId, validateMessage } from './validators/validator.js';
 import { dispatchWebhookEvent } from './services/webhookService.js';
@@ -106,10 +107,20 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
     const qualified = sortQualifiedLeads(leads.map((lead) => qualifyLead(lead, criteria.needs)), criteria.sortMode);
     const existingLeads = await dbService.leads.findLeadsByNamesAndCity(qualified.map((lead) => lead.name), city);
     const existingByName = new Map(existingLeads.map((lead) => [lead.name, lead]));
-    const candidatesToSave = (criteria.excludeSaved
+    const preliminaryCandidates = (criteria.excludeSaved
       ? qualified.filter((lead) => !existingByName.has(lead.name))
       : qualified
-    ).slice(0, requestedLimit);
+    );
+    const enrichedCandidates = [];
+    for (let index = 0; index < preliminaryCandidates.length && enrichedCandidates.length < requestedLimit; index += 5) {
+      const batch = preliminaryCandidates.slice(index, index + 5);
+      const enrichedBatch = await Promise.all(batch.map(enrichLeadPublicContacts));
+      enrichedCandidates.push(...enrichedBatch.filter((lead) => !criteria.onlyNoInstagram || !lead.instagram));
+    }
+    const candidatesToSave = sortQualifiedLeads(
+      enrichedCandidates.slice(0, requestedLimit).map((lead) => qualifyLead(lead, criteria.needs)),
+      criteria.sortMode,
+    );
     const savedLeads = [];
     let newCount = 0;
 
@@ -191,7 +202,8 @@ router.post('/leads/search', validateLeadSearch, async (req, res) => {
 router.get('/searches', async (req, res) => {
   try {
     const raw = await dbService.settings.getSettingByKey('saved_searches');
-    res.json(JSON.parse(raw || '[]'));
+    const parsed = JSON.parse(raw || '[]');
+    res.json(Array.isArray(parsed) ? parsed : []);
   } catch (err) {
     console.error('[API Saved Searches Error]:', err.message);
     res.status(500).json({ error: 'Não foi possível carregar as buscas salvas.' });
@@ -210,6 +222,48 @@ router.get('/searches/:id', async (req, res) => {
   } catch (err) {
     console.error('[API Saved Search Details Error]:', err.message);
     res.status(500).json({ error: 'NÃ£o foi possÃ­vel reabrir a busca salva.' });
+  }
+});
+
+router.get('/folders', async (req, res) => {
+  try { res.json(await folderService.list()); }
+  catch (err) { res.status(500).json({ error: 'Não foi possível carregar as pastas.' }); }
+});
+
+router.post('/folders', async (req, res) => {
+  try { res.status(201).json(await folderService.create(req.body?.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.put('/folders/:id', async (req, res) => {
+  try { res.json(await folderService.rename(req.params.id, req.body?.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.delete('/folders/:id', async (req, res) => {
+  try { await folderService.remove(req.params.id); res.json({ success: true }); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+
+router.post('/folders/:id/leads', async (req, res) => {
+  try { res.json(await folderService.addLeads(req.params.id, req.body?.leadIds)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.delete('/folders/:id/leads', async (req, res) => {
+  try { res.json(await folderService.removeLeads(req.params.id, req.body?.leadIds)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.post('/leads/ai-prioritize', async (req, res) => {
+  try {
+    const leadIds = [...new Set((req.body?.leadIds || []).map(String).filter(Boolean))].slice(0, 100);
+    if (!leadIds.length) return res.status(400).json({ error: 'Selecione ao menos uma empresa.' });
+    const leads = await dbService.leads.getLeadsByIds(leadIds);
+    res.json(await prioritizeLeadsWithAi(leads, req.body?.objective));
+  } catch (err) {
+    console.error('[AI Prioritization Error]:', err.message);
+    res.status(500).json({ error: 'Não foi possível priorizar a seleção agora.' });
   }
 });
 

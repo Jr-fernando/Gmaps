@@ -1,5 +1,80 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { isSafeExternalUrl } from '../utils/validation.js';
+
+const firstValue = (items) => items.find(Boolean) || '';
+const cleanPhone = (value) => String(value || '').replace(/[^\d+]/g, '').slice(0, 20);
+
+export function extractPublicContactsFromHtml(html, baseUrl = '') {
+  const $ = cheerio.load(String(html || ''));
+  const links = [];
+  $('a[href]').each((_, element) => {
+    const raw = String($(element).attr('href') || '').trim();
+    try { links.push(new URL(raw, baseUrl).toString()); } catch { links.push(raw); }
+  });
+
+  const instagramLink = firstValue(links.filter((href) => /https?:\/\/(?:www\.)?instagram\.com\/(?!p\/|reel\/|stories\/|explore\/|share\/)[^?#/]+/i.test(href)));
+  const instagramMatch = instagramLink.match(/instagram\.com\/([^/?#]+)/i);
+  const facebook = firstValue(links.filter((href) => /https?:\/\/(?:www\.)?(?:facebook|fb)\.com\//i.test(href)));
+  const emailLink = firstValue(links.filter((href) => /^mailto:/i.test(href)));
+  const emailMatch = `${emailLink} ${$.text()}`.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  const whatsappLink = firstValue(links.filter((href) => /(?:wa\.me\/|api\.whatsapp\.com\/send|whatsapp:\/\/)/i.test(href)));
+  const whatsappMatch = whatsappLink.match(/(?:wa\.me\/|phone=)(\+?\d{8,20})/i);
+
+  return {
+    instagram: instagramMatch?.[1] ? `@${instagramMatch[1].replace(/^@/, '')}` : '',
+    instagram_link: instagramLink,
+    facebook,
+    email: emailMatch?.[0] || '',
+    whatsapp: cleanPhone(whatsappMatch?.[1] || ''),
+    verifiedContacts: [
+      instagramLink && 'instagram',
+      facebook && 'facebook',
+      emailMatch && 'email',
+      whatsappMatch && 'whatsapp',
+    ].filter(Boolean),
+  };
+}
+
+export const enrichLeadPublicContacts = async (lead) => {
+  if (!lead?.website || !isSafeExternalUrl(lead.website)) return lead;
+  try {
+    const response = await axios.get(lead.website, {
+      timeout: 3500,
+      maxContentLength: 1024 * 1024,
+      maxBodyLength: 1024 * 1024,
+      maxRedirects: 2,
+      responseType: 'text',
+      headers: { 'User-Agent': 'LeadMap/1.0 public-contact-discovery' },
+    });
+    const contacts = extractPublicContactsFromHtml(response.data, response.request?.res?.responseUrl || lead.website);
+    const verified = contacts.verifiedContacts || [];
+    return {
+      ...lead,
+      email: lead.email || contacts.email,
+      instagram: lead.instagram || contacts.instagram,
+      instagram_link: lead.instagram_link || contacts.instagram_link,
+      facebook: lead.facebook || contacts.facebook,
+      whatsapp: lead.whatsapp || contacts.whatsapp,
+      social_analysis: {
+        ...(lead.social_analysis || {}),
+        contactDiscovery: {
+          source: lead.website,
+          checkedAt: new Date().toISOString(),
+          verified,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...lead,
+      social_analysis: {
+        ...(lead.social_analysis || {}),
+        contactDiscovery: { source: lead.website, checkedAt: new Date().toISOString(), verified: [], error: 'Site indisponível para leitura automática.' },
+      },
+    };
+  }
+};
 
 // Helper to check if a website script has Google Analytics or Meta Pixel
 function analyzeHtmlContent(html) {

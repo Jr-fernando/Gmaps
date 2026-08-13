@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRight, Building2, Check, ChevronDown, Clapperboard, Clock3, Globe2, Instagram, LoaderCircle,
-  MapPin, MessageCircle, Search, SlidersHorizontal, Sparkles, Star, Target
+  ArrowRight, Building2, Check, ChevronDown, Clapperboard, Clock3, FolderPlus, Globe2, Instagram, LoaderCircle,
+  MapPin, MessageCircle, Search, SlidersHorizontal, Sparkles, Star, Target, WandSparkles
 } from 'lucide-react';
-import { leadService, searchService, settingsService } from '../services/api';
+import { folderService, leadService, searchService, settingsService } from '../services/api';
 
 const NEEDS = [
   { id: 'social_media', label: 'Social media', hint: 'Instagram ausente ou fraco', icon: Instagram },
@@ -42,6 +42,13 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   const [summary, setSummary] = useState(initialSession.summary || null);
   const [error, setError] = useState('');
   const [savedSearches, setSavedSearches] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [folderId, setFolderId] = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState('');
+  const [aiResult, setAiResult] = useState(null);
   const [activeSearchId, setActiveSearchId] = useState(initialSession.activeSearchId || '');
   const resultsRef = useRef(null);
   const restoreSearchId = initialSession.activeSearchId || '';
@@ -64,11 +71,12 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   });
 
   useEffect(() => {
-    const savedPromise = searchService.getSaved().then(setSavedSearches).catch(() => setSavedSearches([]));
+    const savedPromise = searchService.getSaved().then((data) => setSavedSearches(Array.isArray(data) ? data : [])).catch(() => setSavedSearches([]));
+    const foldersPromise = folderService.getAll().then((data) => setFolders(Array.isArray(data) ? data : [])).catch(() => setFolders([]));
     const activePromise = restoreSearchId
       ? searchService.getById(restoreSearchId).then(({ leads }) => setResults(leads || [])).catch(() => setActiveSearchId(''))
       : Promise.resolve();
-    Promise.all([savedPromise, activePromise]).catch(() => {});
+    Promise.all([savedPromise, foldersPromise, activePromise]).catch(() => {});
   }, [restoreSearchId]);
 
   useEffect(() => {
@@ -76,6 +84,49 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
       sessionStorage.setItem(SEARCH_SESSION_KEY, JSON.stringify({ form, advanced, summary, activeSearchId }));
     } catch { /* The current search still works when browser storage is unavailable. */ }
   }, [form, advanced, summary, activeSearchId]);
+
+  useEffect(() => {
+    const available = new Set(results.map((lead) => String(lead.id)).filter(Boolean));
+    setSelectedIds((current) => current.filter((id) => available.has(String(id))));
+    setAiResult(null);
+  }, [results]);
+
+  const toggleSelected = (id) => setSelectedIds((current) => current.includes(String(id)) ? current.filter((item) => item !== String(id)) : [...current, String(id)]);
+  const selectableIds = sortedResults.map((lead) => String(lead.id)).filter(Boolean);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.includes(id));
+  const toggleAll = () => setSelectedIds(allSelected ? [] : selectableIds);
+
+  const createFolder = async () => {
+    if (!newFolderName.trim()) return;
+    setBulkBusy(true); setBulkMessage('');
+    try {
+      const folder = await folderService.create(newFolderName);
+      const next = await folderService.getAll();
+      setFolders(next); setFolderId(folder.id); setNewFolderName('');
+      setBulkMessage(`Pasta “${folder.name}” criada.`);
+    } catch (err) { setBulkMessage(err.message); }
+    finally { setBulkBusy(false); }
+  };
+
+  const saveSelection = async () => {
+    if (!selectedIds.length) return setBulkMessage('Selecione pelo menos uma empresa.');
+    if (!folderId) return setBulkMessage('Escolha ou crie uma pasta para organizar a seleção.');
+    setBulkBusy(true); setBulkMessage('');
+    try {
+      const updated = await folderService.addLeads(folderId, selectedIds);
+      setFolders((current) => current.map((folder) => folder.id === updated.id ? updated : folder));
+      setBulkMessage(`${selectedIds.length} empresa${selectedIds.length === 1 ? '' : 's'} adicionada${selectedIds.length === 1 ? '' : 's'} à pasta “${updated.name}”.`);
+    } catch (err) { setBulkMessage(err.message); }
+    finally { setBulkBusy(false); }
+  };
+
+  const prioritizeSelection = async () => {
+    if (!selectedIds.length) return setBulkMessage('Selecione as empresas que a IA deve comparar.');
+    setBulkBusy(true); setBulkMessage(''); setAiResult(null);
+    try { setAiResult(await leadService.prioritize(selectedIds, selectedNeeds.map((item) => item.label).join(', '))); }
+    catch (err) { setBulkMessage(err.message); }
+    finally { setBulkBusy(false); }
+  };
 
   const openSavedSearch = async (item) => {
     setError('');
@@ -146,7 +197,7 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         shortfall: data.shortfall || 0,
       });
       const saved = await searchService.getSaved().catch(() => []);
-      setSavedSearches(saved);
+      setSavedSearches(Array.isArray(saved) ? saved : []);
       onSearchComplete?.();
     } catch (err) {
       setError(err.message || 'Não foi possível concluir a busca.');
@@ -216,18 +267,29 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
 
       {summary && !loading && <section className="search-results" ref={resultsRef}>
         <div className="results-heading"><div><span className="eyebrow"><Check size={13} /> Busca concluída</span><h2>{summary.count} de {summary.requested} oportunidades encontradas</h2><p>{summary.shortfall ? `Foram encontrados ${summary.count} perfis únicos que atendem aos filtros. ` : ''}Você pode mudar a ordem abaixo sem refazer a busca.</p></div><span className={`source-badge ${summary.realData ? 'real' : ''}`}>{summary.realData ? 'Dados do Google Places' : 'Modo demonstração'}</span></div>
-        <div className="results-toolbar"><label><span>Priorizar</span><select value={form.sortMode} onChange={(e) => update('sortMode', e.target.value)}>{SORT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><small>Vulnerabilidade é uma estimativa. Instagram precisa ser validado fora do Google Places.</small></div>
+        <div className="results-toolbar"><label><span>Priorizar</span><select value={form.sortMode} onChange={(e) => update('sortMode', e.target.value)}>{SORT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><small>O Maps não fornece Instagram; o sistema valida somente links públicos encontrados no site oficial.</small></div>
+        <div className="bulk-toolbar">
+          <label className="bulk-check"><input type="checkbox" checked={allSelected} onChange={toggleAll} /> <span>{allSelected ? 'Desmarcar todos' : `Selecionar todos (${selectableIds.length})`}</span></label>
+          <select value={folderId} onChange={(event) => setFolderId(event.target.value)} aria-label="Escolher pasta"><option value="">Escolher pasta</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name} ({folder.leadIds.length})</option>)}</select>
+          <div className="folder-create"><input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} placeholder="Nova pasta" maxLength={60} /><button type="button" onClick={createFolder} disabled={bulkBusy || !newFolderName.trim()} aria-label="Criar pasta"><FolderPlus size={16} /></button></div>
+          <button type="button" className="bulk-primary" onClick={saveSelection} disabled={bulkBusy || !selectedIds.length}>Salvar {selectedIds.length || ''} na pasta</button>
+          <button type="button" className="bulk-ai" onClick={prioritizeSelection} disabled={bulkBusy || !selectedIds.length}>{bulkBusy ? <LoaderCircle className="spin" size={15} /> : <WandSparkles size={15} />} Priorizar com IA</button>
+          <small>Os resultados já ficam no CRM; a seleção organiza os escolhidos.</small>
+        </div>
+        {bulkMessage && <div className="bulk-feedback">{bulkMessage}</div>}
+        {aiResult && <div className="ai-priority-panel"><div><strong>Ordem sugerida pela IA</strong><span>{aiResult.provider === 'gemini' ? 'Gemini' : 'Análise local'}</span></div><p>{aiResult.summary}</p><ol>{aiResult.recommendations.slice(0, 10).map((item) => { const lead = results.find((entry) => String(entry.id) === String(item.leadId)); return <li key={item.leadId}><strong>{lead?.name || 'Empresa'} · {item.score}/100</strong><span>{item.reason}</span><small>{item.approach}</small></li>; })}</ol></div>}
         <div className="results-list">
           {sortedResults.map((lead, index) => {
             const qualification = qualificationOf(lead);
-            return <button type="button" className="result-row" key={lead.id || lead.place_id || index} onClick={() => lead.id && onSelectLead(lead.id)}>
+            return <article className={`result-row ${selectedIds.includes(String(lead.id)) ? 'selected' : ''}`} key={lead.id || lead.place_id || index} onClick={() => lead.id && onSelectLead(lead.id)}>
+            <label className="result-select" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(String(lead.id))} onChange={() => toggleSelected(lead.id)} aria-label={`Selecionar ${lead.name}`} /></label>
             <span className="result-rank">{String(index + 1).padStart(2, '0')}</span>
             <span className="result-company"><strong>{lead.name}</strong><small><MapPin size={12} /> {lead.address || lead.city}</small></span>
             <span className="result-signal"><Star size={14} /> {lead.rating || '—'} <small>({lead.reviews_count || 0})</small></span>
             <span className="result-gaps">{!lead.website && <i>Sem site</i>}<i className={`difficulty-${String(qualification.difficultyLabel || '').toLowerCase()}`}>{qualification.difficultyLabel || 'Analisar'}</i></span>
             <span className="result-score"><small>Vulnerável</small><strong>{qualification.vulnerabilityScore ?? lead.opportunity_score ?? 0}</strong></span>
             <ArrowRight size={17} />
-          </button>})}
+          </article>})}
         </div>
       </section>}
 

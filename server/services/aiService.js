@@ -1,6 +1,18 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import { dbService } from './dbService.js';
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
+const generateWithGemini = async (apiKey, prompt, { json = false } = {}) => {
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: prompt,
+    config: json ? { responseMimeType: 'application/json' } : undefined,
+  });
+  return response.text;
+};
 
 // Fallback Portuguese generator if no API key is provided
 function generateLocalFallbackReport(lead, websiteAnalysis, socialAnalysis) {
@@ -139,6 +151,8 @@ export const generateAiReport = async (lead, websiteAnalysis, socialAnalysis) =>
     : (lead.reviews_count > 30 || lead.followers > 1000 ? 'Média' : 'Pequena / Microempresa');
 
   const prompt = `Analise a empresa com base nos dados fornecidos, nas estatísticas históricas do sistema e nas regras de negócio, gerando um diagnóstico de presença digital profissional em formato Markdown e uma régua completa de prospecção multicanais.
+
+  REGRA DE CONFIABILIDADE: nunca invente e-mail, Instagram, seguidores, desempenho, atividade social ou qualquer dado ausente. Identifique claramente o que foi verificado, o que é uma inferência e o que ainda precisa ser validado.
   
   Dados da Empresa:
   - Nome: ${lead.name}
@@ -212,13 +226,7 @@ export const generateAiReport = async (lead, websiteAnalysis, socialAnalysis) =>
   if (geminiKey && geminiKey.trim() !== '') {
     try {
       console.log('Utilizando Gemini para análise do lead...');
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash',
-        generationConfig: { responseMimeType: 'application/json' }
-      });
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
+      const text = await generateWithGemini(geminiKey, prompt, { json: true });
       return JSON.parse(text);
     } catch (err) {
       console.error('Falha no Gemini, tentando fallback local:', err.message);
@@ -271,10 +279,7 @@ export const generateProposalText = async (lead, selectedServices) => {
 
   if (geminiKey && geminiKey.trim() !== '') {
     try {
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const result = await model.generateContent(prompt);
-      return result.response.text();
+      return await generateWithGemini(geminiKey, prompt);
     } catch (err) {
       console.error('Erro na geração da proposta pelo Gemini:', err.message);
     }
@@ -379,7 +384,8 @@ export const chatWithLeadAi = async (lead, userMessage, history = []) => {
   const systemInstructions = `Você é um agente comercial e assistente de prospecção da agência de serviços digitais.
   Você está analisando a empresa ${lead.name} (${lead.segment}) na cidade de ${lead.city}/${lead.state}.
   Responda à solicitação do usuário gerando o conteúdo necessário (como e-mails, ajustes de orçamentos, respostas a dúvidas de clientes). 
-  Sempre responda de forma prestativa, profissional e orientada a fechar vendas. Mantenha o foco em português do Brasil.`;
+  Sempre responda de forma prestativa, profissional e orientada a fechar vendas. Mantenha o foco em português do Brasil.
+  Nunca invente contatos, métricas ou fatos sobre a empresa. Diferencie explicitamente dados verificados, inferências e informações ainda não verificadas.`;
 
   const messagesList = [
     { role: 'system', content: systemInstructions },
@@ -389,12 +395,8 @@ export const chatWithLeadAi = async (lead, userMessage, history = []) => {
 
   if (geminiKey && geminiKey.trim() !== '') {
     try {
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      
       const combinedPrompt = `${systemInstructions}\n\nHistórico:\n${history.map(h => `${h.sender}: ${h.text}`).join('\n')}\n\nUser: ${userMessage}`;
-      const result = await model.generateContent(combinedPrompt);
-      return result.response.text();
+      return await generateWithGemini(geminiKey, combinedPrompt);
     } catch (err) {
       console.error('Gemini chat error, falling back:', err.message);
     }
@@ -423,4 +425,71 @@ export const chatWithLeadAi = async (lead, userMessage, history = []) => {
   }
 
   return `Entendi sua solicitação sobre a empresa **${lead.name}**. Posso te ajudar a redigir mensagens, criar escopos específicos de serviço ou tirar dúvidas para preparar a reunião comercial. Como deseja prosseguir?`;
+};
+
+const compactLead = (lead) => ({
+  id: String(lead.id),
+  name: lead.name,
+  segment: lead.segment || lead.category || 'Não informado',
+  city: lead.city || 'Não informada',
+  rating: lead.rating || null,
+  reviews: lead.reviews_count || 0,
+  opportunityScore: lead.opportunity_score || 0,
+  website: lead.website || null,
+  instagram: lead.instagram || null,
+  email: lead.email || null,
+  whatsapp: lead.whatsapp || lead.phone || null,
+  qualification: lead.website_analysis?.qualification || lead.social_analysis?.qualification || null,
+});
+
+const localPrioritization = (leads) => {
+  const recommendations = leads.map((lead) => {
+    const contactable = Boolean(lead.whatsapp || lead.phone || lead.email || lead.instagram);
+    const score = Math.min(100, Math.max(0, Number(lead.opportunity_score || 0) + (contactable ? 8 : -8)));
+    return {
+      leadId: String(lead.id),
+      score,
+      reason: `${lead.opportunity_score || 0}/100 de oportunidade${contactable ? ' e contato público disponível' : ', mas ainda sem canal direto verificado'}.`,
+      approach: contactable ? 'Validar o canal e iniciar uma abordagem curta baseada em um problema comprovado.' : 'Localizar e validar um canal oficial antes de preparar a abordagem.',
+    };
+  }).sort((a, b) => b.score - a.score);
+  return { summary: 'Priorização heurística baseada na oportunidade calculada e na disponibilidade de contato verificado.', recommendations, provider: 'local' };
+};
+
+export const prioritizeLeadsWithAi = async (leads, objective = '') => {
+  const geminiKey = await getApiKey('gemini');
+  if (!geminiKey) return localPrioritization(leads);
+
+  const prompt = `Você é um analista de prospecção B2B local. Ordene os leads para o objetivo comercial informado.
+
+Objetivo: ${String(objective || 'Encontrar os contatos com melhor equilíbrio entre necessidade, facilidade de contato e chance de resposta').slice(0, 500)}
+Leads: ${JSON.stringify(leads.map(compactLead))}
+
+Regras obrigatórias:
+- Use somente os dados fornecidos. Nunca invente Instagram, e-mail, seguidores, atividade, faturamento ou intenção de compra.
+- Um campo ausente é "não verificado", não uma fraqueza comprovada.
+- Aponte o motivo de forma curta e prática.
+- Retorne todos os IDs recebidos, sem duplicar.
+- Responda apenas JSON no formato:
+{"summary":"resumo curto","recommendations":[{"leadId":"id","score":0,"reason":"motivo","approach":"próxima ação"}]}`;
+
+  try {
+    const text = await generateWithGemini(geminiKey, prompt, { json: true });
+    const parsed = JSON.parse(text);
+    const allowed = new Set(leads.map((lead) => String(lead.id)));
+    const recommendations = (parsed.recommendations || [])
+      .filter((item) => allowed.has(String(item.leadId)))
+      .map((item) => ({
+        leadId: String(item.leadId),
+        score: Math.min(100, Math.max(0, Number(item.score) || 0)),
+        reason: String(item.reason || '').slice(0, 500),
+        approach: String(item.approach || '').slice(0, 500),
+      }))
+      .sort((a, b) => b.score - a.score);
+    if (!recommendations.length) throw new Error('A IA não retornou leads válidos.');
+    return { summary: String(parsed.summary || '').slice(0, 1000), recommendations, provider: 'gemini' };
+  } catch (error) {
+    console.error('[Gemini Prioritization Error]:', error.message);
+    return localPrioritization(leads);
+  }
 };
