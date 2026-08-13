@@ -1,10 +1,15 @@
 import { dbGet, dbRun, dbAll, isSupabaseEnabled, supabase } from '../db.js';
 
-const secretKeys = new Set(['gemini_api_key', 'openai_api_key', 'claude_api_key', 'google_places_api_key']);
+const secretKeys = new Set(['gemini_api_key', 'openai_api_key', 'claude_api_key', 'google_places_api_key', 'resend_api_key', 'meta_access_token']);
 const environmentSecrets = {
   gemini_api_key: 'GEMINI_API_KEY',
   openai_api_key: 'OPENAI_API_KEY',
-  google_places_api_key: 'GOOGLE_PLACES_API_KEY'
+  google_places_api_key: 'GOOGLE_PLACES_API_KEY',
+  resend_api_key: 'RESEND_API_KEY',
+  meta_access_token: 'META_ACCESS_TOKEN',
+  email_from: 'EMAIL_FROM',
+  whatsapp_phone_number_id: 'WHATSAPP_PHONE_NUMBER_ID',
+  instagram_account_id: 'INSTAGRAM_ACCOUNT_ID'
 };
 
 const mergeEnvironmentSecrets = (settings) => {

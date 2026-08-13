@@ -153,6 +153,19 @@ export const searchService = {
   getById: async (id) => handleResponse(await apiFetch(`/api/searches/${id}`))
 };
 
+export const outreachService = {
+  getConnections: async () => handleResponse(await apiFetch('/api/outreach/connections')),
+  getMessages: async (status = '') => handleResponse(await apiFetch(`/api/outreach/messages${status ? `?status=${encodeURIComponent(status)}` : ''}`)),
+  createPlan: async (leadIds, objective = '') => handleResponse(await apiFetch('/api/outreach/plan', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadIds, objective })
+  })),
+  updateMessage: async (id, changes) => handleResponse(await apiFetch(`/api/outreach/messages/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes)
+  })),
+  sendMessage: async (id) => handleResponse(await apiFetch(`/api/outreach/messages/${id}/send`, { method: 'POST' })),
+  handoff: async (id) => handleResponse(await apiFetch(`/api/outreach/messages/${id}/handoff`, { method: 'POST' }))
+};
+
 export const settingsService = {
   getSettings: async () => {
     const res = await apiFetch('/api/settings');

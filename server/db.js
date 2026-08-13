@@ -196,12 +196,35 @@ export const initDb = async () => {
     )
   `);
 
+  await dbRun(`CREATE TABLE IF NOT EXISTS ai_generations (
+    id TEXT PRIMARY KEY, purpose TEXT, prompt_hash TEXT, model TEXT, lead_ids TEXT,
+    status TEXT, result TEXT, token_usage TEXT, error TEXT, created_at TEXT, completed_at TEXT
+  )`);
+  await dbRun(`CREATE TABLE IF NOT EXISTS outreach_messages (
+    id TEXT PRIMARY KEY, lead_id INTEGER NOT NULL, generation_id TEXT, channel TEXT NOT NULL,
+    recipient TEXT, subject TEXT, message TEXT NOT NULL, status TEXT DEFAULT 'draft', provider TEXT,
+    external_id TEXT, requires_approval INTEGER DEFAULT 1, scheduled_for TEXT, sent_at TEXT,
+    error TEXT, metadata TEXT DEFAULT '{}', created_at TEXT, updated_at TEXT,
+    FOREIGN KEY(lead_id) REFERENCES leads(id) ON DELETE CASCADE
+  )`);
+  await dbRun('CREATE INDEX IF NOT EXISTS idx_outreach_status_created ON outreach_messages(status, created_at DESC)');
+
   // Insert default settings if they don't exist
   const defaultSettings = [
     { key: 'gemini_api_key', value: '' },
     { key: 'openai_api_key', value: '' },
     { key: 'claude_api_key', value: '' },
     { key: 'google_places_api_key', value: '' },
+    { key: 'resend_api_key', value: '' },
+    { key: 'email_from', value: '' },
+    { key: 'meta_access_token', value: '' },
+    { key: 'whatsapp_phone_number_id', value: '' },
+    { key: 'instagram_account_id', value: '' },
+    { key: 'agency_services', value: 'Social media, edição de conteúdo, tráfego pago, sites e automação' },
+    { key: 'agency_offer', value: 'Diagnóstico gratuito de presença digital com oportunidades práticas' },
+    { key: 'outreach_tone', value: 'Humano, consultivo, direto e sem pressão' },
+    { key: 'outreach_approval_required', value: 'true' },
+    { key: 'outreach_daily_limit', value: '20' },
     { key: 'whatsapp_webhook_url', value: '' },
     { key: 'telegram_webhook_url', value: '' },
     { key: 'notion_api_key', value: '' },

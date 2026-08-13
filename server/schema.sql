@@ -67,6 +67,46 @@ create table if not exists public.settings (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.ai_generations (
+  id uuid primary key default extensions.uuid_generate_v4(),
+  purpose text not null,
+  prompt_hash text,
+  model text not null,
+  lead_ids jsonb not null default '[]'::jsonb,
+  status text not null default 'pending',
+  result jsonb not null default '{}'::jsonb,
+  token_usage jsonb not null default '{}'::jsonb,
+  error text,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create table if not exists public.outreach_messages (
+  id uuid primary key default extensions.uuid_generate_v4(),
+  lead_id uuid not null references public.leads(id) on delete cascade,
+  generation_id uuid references public.ai_generations(id) on delete set null,
+  channel text not null check (channel in ('email','whatsapp','instagram')),
+  recipient text,
+  subject text,
+  message text not null,
+  status text not null default 'draft' check (status in ('draft','approved','sent','failed','handed_off','cancelled')),
+  provider text,
+  external_id text,
+  requires_approval boolean not null default true,
+  scheduled_for timestamptz,
+  sent_at timestamptz,
+  error text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.ai_generations enable row level security;
+alter table public.outreach_messages enable row level security;
+create index if not exists outreach_messages_status_created_idx on public.outreach_messages(status, created_at desc);
+create index if not exists outreach_messages_lead_idx on public.outreach_messages(lead_id);
+create index if not exists outreach_messages_generation_idx on public.outreach_messages(generation_id);
+
 create index if not exists leads_city_idx on public.leads(city);
 create index if not exists leads_segment_idx on public.leads(segment);
 create index if not exists leads_status_created_idx on public.leads(status, created_at desc);

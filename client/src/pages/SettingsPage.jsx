@@ -72,6 +72,34 @@ export default function SettingsPage() {
           </div>
         </Card>
 
+        <Card className="settings-section">
+          <h3 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sliders size={18} /> Agente comercial e canais
+          </h3>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+            Ensine a IA sobre sua oferta e conecte os provedores oficiais. As mensagens continuam exigindo sua aprovação.
+          </p>
+          <Input textarea label="Serviços que você oferece" value={settings.agency_services || ''} onChange={(e) => handleChange('agency_services', e.target.value)} style={{ height: '75px', marginBottom: '14px' }} />
+          <Input textarea label="Oferta ou próximo passo" value={settings.agency_offer || ''} onChange={(e) => handleChange('agency_offer', e.target.value)} style={{ height: '75px', marginBottom: '14px' }} />
+          <div className="settings-row">
+            <Input label="Tom das abordagens" value={settings.outreach_tone || ''} onChange={(e) => handleChange('outreach_tone', e.target.value)} />
+            <Input type="number" label="Limite diário de envios" value={settings.outreach_daily_limit || '20'} onChange={(e) => handleChange('outreach_daily_limit', e.target.value)} />
+          </div>
+          <div className="settings-row">
+            <Input type="password" label={`Resend API Key${settings.resend_api_key_configured ? ' (configurada)' : ''}`} placeholder="re_..." value={settings.resend_api_key || ''} onChange={(e) => handleChange('resend_api_key', e.target.value)} />
+            <Input label="Remetente de e-mail verificado" placeholder="Sua Empresa <contato@seudominio.com>" value={settings.email_from || ''} onChange={(e) => handleChange('email_from', e.target.value)} />
+          </div>
+          <div className="settings-row">
+            <Input type="password" label={`Meta Access Token${settings.meta_access_token_configured ? ' (configurado)' : ''}`} placeholder="Token permanente da Meta" value={settings.meta_access_token || ''} onChange={(e) => handleChange('meta_access_token', e.target.value)} />
+            <Input label="WhatsApp Phone Number ID" value={settings.whatsapp_phone_number_id || ''} onChange={(e) => handleChange('whatsapp_phone_number_id', e.target.value)} />
+          </div>
+          <Input label="Instagram Professional Account ID" value={settings.instagram_account_id || ''} onChange={(e) => handleChange('instagram_account_id', e.target.value)} />
+          <div style={{ display: 'flex', gap: '9px', alignItems: 'flex-start', marginTop: '14px', padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+            <Info size={16} style={{ flexShrink: 0, color: 'var(--accent-primary)' }} />
+            <span>WhatsApp automático só é liberado quando você confirma o consentimento do contato. No Instagram, a API responde conversas elegíveis; o primeiro contato abre o perfil para você.</span>
+          </div>
+        </Card>
+
         {/* Prospecting Rules */}
         <Card className="settings-section">
           <h3 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
