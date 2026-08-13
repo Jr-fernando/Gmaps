@@ -3,7 +3,7 @@ import { dbService } from './services/dbService.js';
 import { searchCompanies } from './services/scraperService.js';
 import { analyzePresence, enrichLeadPublicContacts } from './services/presenceService.js';
 import { qualifyLead, sortQualifiedLeads } from './services/qualificationService.js';
-import { generateAiReport, generateProposalText, chatWithLeadAi, prioritizeLeadsWithAi, createOutreachPlan } from './services/aiService.js';
+import { generateAiReport, generateProposalText, chatWithLeadAi, prioritizeLeadsWithAi, createOutreachPlan, recommendSearchWithAi } from './services/aiService.js';
 import { deliverOutreachMessage, getChannelConnections } from './services/channelService.js';
 import { folderService } from './services/folderService.js';
 import { processPendingFollowUps } from './services/cronService.js';
@@ -246,6 +246,18 @@ router.get('/searches/:id', async (req, res) => {
   } catch (err) {
     console.error('[API Saved Search Details Error]:', err.message);
     res.status(500).json({ error: 'NÃ£o foi possÃ­vel reabrir a busca salva.' });
+  }
+});
+
+router.post('/searches/ai-recommend', async (req, res) => {
+  try {
+    const raw = await dbService.settings.getSettingByKey('saved_searches');
+    let searches = [];
+    try { searches = JSON.parse(raw || '[]'); } catch { searches = []; }
+    res.json(await recommendSearchWithAi(searches, req.body?.current || {}));
+  } catch (err) {
+    console.error('[AI Search Recommendation Error]:', err.message);
+    res.status(500).json({ error: 'A IA não conseguiu montar a busca agora.' });
   }
 });
 

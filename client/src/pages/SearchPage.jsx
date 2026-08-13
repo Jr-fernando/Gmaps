@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRight, Building2, Check, ChevronDown, Clapperboard, Clock3, FolderPlus, Globe2, Instagram, LoaderCircle,
+  ArrowRight, Bot, Building2, Check, ChevronDown, Clapperboard, Clock3, FolderPlus, Globe2, Instagram, LoaderCircle,
   MapPin, MessageCircle, Search, SlidersHorizontal, Sparkles, Star, Target, WandSparkles
 } from 'lucide-react';
 import { folderService, leadService, searchService, settingsService } from '../services/api';
@@ -49,6 +49,8 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState('');
   const [aiResult, setAiResult] = useState(null);
+  const [aiSearch, setAiSearch] = useState(null);
+  const [aiSearching, setAiSearching] = useState(false);
   const [activeSearchId, setActiveSearchId] = useState(initialSession.activeSearchId || '');
   const resultsRef = useRef(null);
   const restoreSearchId = initialSession.activeSearchId || '';
@@ -167,35 +169,37 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
     }
   };
 
-  const submit = async (event) => {
-    event.preventDefault();
+  const executeSearch = async (criteria, aiRecommendation = null) => {
     setError('');
     setLoading(true);
     try {
-      const settings = await settingsService.getSettings().catch(() => ({}));
-      const data = await leadService.searchLeads({
-        query: form.query,
-        city: form.city,
-        region: form.region,
-        radius: Number(form.radius),
-        needs: form.needs,
-        minReviews: Number(form.minReviews || 0),
-        maxRating: form.maxRating ? Number(form.maxRating) : undefined,
-        onlyNoWebsite: form.onlyNoWebsite,
-        onlyNoInstagram: form.onlyNoInstagram,
-        excludeSaved: form.excludeSaved,
-        limit: Number(form.limit),
-        sortMode: form.sortMode,
+      const settingsPromise = settingsService.getSettings().catch(() => ({}));
+      const searchPromise = leadService.searchLeads({
+        query: criteria.query,
+        city: criteria.city,
+        region: criteria.region,
+        radius: Number(criteria.radius),
+        needs: criteria.needs,
+        minReviews: Number(criteria.minReviews || 0),
+        maxRating: criteria.maxRating ? Number(criteria.maxRating) : undefined,
+        onlyNoWebsite: criteria.onlyNoWebsite,
+        onlyNoInstagram: criteria.onlyNoInstagram,
+        excludeSaved: criteria.excludeSaved,
+        limit: Number(criteria.limit),
+        sortMode: criteria.sortMode,
       });
+      const [settings, data] = await Promise.all([settingsPromise, searchPromise]);
       setResults(data.leads || []);
       setActiveSearchId(data.searchId || '');
       setSummary({
         count: data.leads?.length || 0,
         realData: Boolean(settings.google_places_api_key_configured),
-        needs: selectedNeeds.map((item) => item.label),
-        requested: data.requested || Number(form.limit),
+        needs: (criteria.needs || []).map((need) => NEEDS.find((item) => item.id === need)?.label || need),
+        requested: data.requested || Number(criteria.limit),
         shortfall: data.shortfall || 0,
+        aiManaged: Boolean(aiRecommendation),
       });
+      if (aiRecommendation) setAiSearch({ ...aiRecommendation, completed: true, found: data.leads?.length || 0 });
       const saved = await searchService.getSaved().catch(() => []);
       setSavedSearches(Array.isArray(saved) ? saved : []);
       onSearchComplete?.();
@@ -206,7 +210,34 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
     }
   };
 
+  const submit = async (event) => {
+    event.preventDefault();
+    await executeSearch(form);
+  };
+
+  const runAiSearch = async () => {
+    if (loading || aiSearching) return;
+    setAiSearching(true); setError(''); setAiSearch(null); setAdvanced(true);
+    try {
+      const recommendation = await searchService.recommend(form);
+      const nextForm = {
+        ...INITIAL, ...recommendation.criteria,
+        radius: String(recommendation.criteria.radius),
+        minReviews: String(recommendation.criteria.minReviews ?? 0),
+        maxRating: recommendation.criteria.maxRating === undefined ? '' : String(recommendation.criteria.maxRating),
+        limit: String(recommendation.criteria.limit),
+      };
+      setForm(nextForm); setAiSearch(recommendation);
+      await executeSearch(nextForm, recommendation);
+    } catch (err) {
+      setError(err.message || 'A IA não conseguiu executar a busca agora.');
+    } finally {
+      setAiSearching(false);
+    }
+  };
+
   return (
+    <>
     <div className="prospecting-page animate-fade-in">
       <section className="prospecting-hero">
         <div className="eyebrow"><Sparkles size={14} /> Prospecção orientada por oportunidade</div>
@@ -265,6 +296,12 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         </div>
       </form>
 
+      {aiSearch && <section className={`ai-search-receipt ${aiSearch.completed ? 'completed' : ''}`}>
+        <span className="ai-search-receipt-icon"><Bot size={20}/></span>
+        <div><strong>{aiSearch.completed ? `Busca autônoma concluída · ${aiSearch.found} encontrados` : 'A IA está configurando a busca'}</strong><p>{aiSearch.explanation}</p><small>{aiSearch.learning}</small></div>
+        <i>{aiSearch.provider === 'gemini' ? 'Gemini' : 'Aprendizado local'}</i>
+      </section>}
+
       {summary && !loading && <section className="search-results" ref={resultsRef}>
         <div className="results-heading"><div><span className="eyebrow"><Check size={13} /> Busca concluída</span><h2>{summary.count} de {summary.requested} oportunidades encontradas</h2><p>{summary.shortfall ? `Foram encontrados ${summary.count} perfis únicos que atendem aos filtros. ` : ''}Você pode mudar a ordem abaixo sem refazer a busca.</p></div><span className={`source-badge ${summary.realData ? 'real' : ''}`}>{summary.realData ? 'Dados do Google Places' : 'Modo demonstração'}</span></div>
         <div className="results-toolbar"><label><span>Priorizar</span><select value={form.sortMode} onChange={(e) => update('sortMode', e.target.value)}>{SORT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><small>O Maps não fornece Instagram; o sistema valida somente links públicos encontrados no site oficial.</small></div>
@@ -302,5 +339,9 @@ export default function SearchPage({ onSearchComplete, onSelectLead }) {
         )}
       </section>
     </div>
+    <button type="button" className={`ai-search-fab ${aiSearching || loading ? 'working' : ''}`} onClick={runAiSearch} disabled={aiSearching || loading} aria-label="Deixar a IA escolher os filtros e buscar clientes" title="A IA aprende com seu histórico e executa uma nova busca">
+        {aiSearching || loading ? <LoaderCircle className="spin" size={24}/> : <Bot size={25}/>}<span>{aiSearching ? 'Escolhendo filtros...' : loading ? 'Buscando empresas...' : 'Buscar com IA'}</span>
+    </button>
+    </>
   );
 }
