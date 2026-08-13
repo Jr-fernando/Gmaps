@@ -11,7 +11,7 @@ const STATUS = { draft: 'Rascunho', approved: 'Aprovada', sent: 'Enviada', faile
 const channelContact = (lead, channel) => channel === 'email' ? lead?.email : channel === 'instagram' ? (lead?.instagram_link || lead?.instagram) : (lead?.whatsapp || lead?.phone);
 const isContacted = (lead) => !['Novo Lead', 'Entrar em contato'].includes(lead?.status || 'Novo Lead');
 
-export default function MessagesPage({ onLeadUpdated }) {
+export default function MessagesPage({ onLeadUpdated, onNavigate }) {
   const [leads, setLeads] = useState([]);
   const [queue, setQueue] = useState([]);
   const [connections, setConnections] = useState(null);
@@ -103,7 +103,7 @@ export default function MessagesPage({ onLeadUpdated }) {
     </section>
 
     <section className="connection-grid">
-      {CHANNELS.map(({ id, label, icon: Icon }) => <div key={id} className={connections?.[id]?.connected ? 'connected' : ''}><Icon size={17}/><span><strong>{label}</strong><small>{connections?.[id]?.connected ? connections[id].detail : 'Configuração pendente'}</small></span><i>{connections?.[id]?.connected ? 'Conectado' : 'Conectar'}</i></div>)}
+      {CHANNELS.map(({ id, label, icon: Icon }) => <div key={id} className={connections?.[id]?.connected ? 'connected' : ''}><Icon size={17}/><span><strong>{label}</strong><small>{connections?.[id]?.connected ? connections[id].detail : connections?.[id]?.detail || 'Configuração pendente'}</small></span>{connections?.[id]?.connected ? <i>Conectado</i> : <button type="button" className="connection-action" onClick={() => onNavigate?.('settings')}>Configurar</button>}</div>)}
       <div className="approval-card"><ShieldCheck size={17}/><span><strong>Revisão humana</strong><small>Obrigatória antes de cada envio</small></span><i>Ativa</i></div>
     </section>
 

@@ -69,7 +69,7 @@ function AppInner() {
             <CompaniesPage onSelectLead={onSelectLead} refreshTrigger={refreshTrigger} />
           )}
           {currentView === 'settings' && <SettingsPage />}
-          {currentView === 'messages' && <MessagesPage onLeadUpdated={triggerRefresh} />}
+          {currentView === 'messages' && <MessagesPage onLeadUpdated={triggerRefresh} onNavigate={onViewChange} />}
           </>
         )}
       </>

@@ -509,6 +509,90 @@ Regras obrigatórias:
   }
 };
 
+const SEARCH_NEEDS = new Set(['social_media', 'content', 'website', 'whatsapp', 'traffic']);
+const SEARCH_SORTS = new Set(['vulnerable', 'easiest', 'hardest', 'reputation']);
+const textValue = (value, fallback = '', max = 100) => String(value || fallback).trim().slice(0, max);
+const numberValue = (value, fallback, min, max) => Math.min(Math.max(Number(value) || fallback, min), max);
+
+const mostUsefulSearch = (history = []) => [...history].sort((a, b) => {
+  const quality = (item) => {
+    const requested = Math.max(Number(item.requested) || 1, 1);
+    const recency = Math.max(0, 30 - ((Date.now() - new Date(item.createdAt || 0).getTime()) / 86400000));
+    return (Number(item.found) || 0) / requested * 100 + recency;
+  };
+  return quality(b) - quality(a);
+})[0];
+
+export const sanitizeSearchRecommendation = (candidate = {}, history = [], current = {}) => {
+  const learned = mostUsefulSearch(history) || {};
+  const needs = Array.isArray(candidate.needs) ? candidate.needs.filter((need) => SEARCH_NEEDS.has(need)) : [];
+  return {
+    query: textValue(candidate.query, current.query || learned.query || 'clínicas odontológicas'),
+    city: textValue(candidate.city, current.city || learned.city || 'São Paulo'),
+    region: textValue(candidate.region, current.region || learned.region || ''),
+    radius: numberValue(candidate.radius, Number(current.radius || learned.radius) || 15, 1, 50),
+    needs: [...new Set(needs.length ? needs : (current.needs || learned.needs || ['social_media']).filter((need) => SEARCH_NEEDS.has(need)))].slice(0, 5),
+    minReviews: numberValue(candidate.minReviews, Number(current.minReviews ?? learned.minReviews) || 10, 0, 100000),
+    maxRating: candidate.maxRating === null || candidate.maxRating === '' ? undefined : (candidate.maxRating === undefined ? (current.maxRating || learned.maxRating || undefined) : numberValue(candidate.maxRating, 5, 0, 5)),
+    onlyNoWebsite: candidate.onlyNoWebsite === undefined ? Boolean(current.onlyNoWebsite ?? learned.onlyNoWebsite) : Boolean(candidate.onlyNoWebsite),
+    onlyNoInstagram: candidate.onlyNoInstagram === undefined ? Boolean(current.onlyNoInstagram ?? learned.onlyNoInstagram) : Boolean(candidate.onlyNoInstagram),
+    excludeSaved: candidate.excludeSaved === undefined ? current.excludeSaved !== false : candidate.excludeSaved !== false,
+    limit: Math.floor(numberValue(candidate.limit, Number(current.limit || learned.requested) || 20, 1, 100)),
+    sortMode: SEARCH_SORTS.has(candidate.sortMode) ? candidate.sortMode : (SEARCH_SORTS.has(current.sortMode) ? current.sortMode : (learned.sortMode || 'vulnerable')),
+  };
+};
+
+const localSearchRecommendation = (history, current) => {
+  const criteria = sanitizeSearchRecommendation({}, history, current);
+  const learned = mostUsefulSearch(history);
+  const learning = learned
+    ? `Usei como referência sua busca com melhor combinação de recência e aproveitamento: ${learned.query}, em ${learned.city}.`
+    : 'Esta é a primeira recomendação; as próximas serão ajustadas pelo histórico de uso e aproveitamento.';
+  return { criteria, explanation: 'Filtros escolhidos para equilibrar oportunidade comercial, volume e contatos ainda não capturados.', learning, provider: 'local' };
+};
+
+export const recommendSearchWithAi = async (history = [], current = {}) => {
+  const safeHistory = (Array.isArray(history) ? history : []).slice(0, 20).map((item) => ({
+    query: item.query, city: item.city, region: item.region || '', needs: item.needs || [], radius: item.radius,
+    minReviews: item.minReviews, maxRating: item.maxRating, onlyNoWebsite: item.onlyNoWebsite,
+    onlyNoInstagram: item.onlyNoInstagram, sortMode: item.sortMode, requested: item.requested,
+    found: item.found, createdAt: item.createdAt,
+  }));
+  const fallback = localSearchRecommendation(safeHistory, current);
+  const geminiKey = await getApiKey('gemini');
+  if (!geminiKey) return fallback;
+
+  const settings = await dbService.settings.getSettings();
+  const prompt = `Você é o agente de pesquisa autônoma do LeadMap, especializado em prospecção B2B local.
+
+Serviços vendidos: ${settings.agency_services || 'social media, conteúdo, sites, automação e tráfego pago'}
+Oferta: ${settings.agency_offer || 'diagnóstico consultivo'}
+Filtros preenchidos agora: ${JSON.stringify(current)}
+Histórico das últimas buscas: ${JSON.stringify(safeHistory)}
+
+Escolha UMA busca completa que tenha boa aderência aos serviços, volume local plausível e evite repetir contatos já capturados. Aprenda padrões do histórico, mas não fique preso a eles: priorize buscas com bom aproveitamento e varie bairro/nicho quando houver repetição. Preserve preferências explícitas preenchidas agora. Não invente fatos sobre empresas; isto é somente planejamento da consulta ao Google Places.
+
+Valores permitidos:
+- needs: social_media, content, website, whatsapp, traffic
+- sortMode: vulnerable, easiest, hardest, reputation
+- radius: 1 a 50; limit: 1 a 100
+
+Responda apenas JSON:
+{"criteria":{"query":"","city":"","region":"","radius":15,"needs":["social_media"],"minReviews":10,"maxRating":null,"onlyNoWebsite":false,"onlyNoInstagram":false,"excludeSaved":true,"limit":20,"sortMode":"vulnerable"},"explanation":"por que esta busca","learning":"o que aprendeu do histórico"}`;
+  try {
+    const parsed = JSON.parse(await generateWithGemini(geminiKey, prompt, { json: true }));
+    return {
+      criteria: sanitizeSearchRecommendation(parsed.criteria, safeHistory, current),
+      explanation: textValue(parsed.explanation, fallback.explanation, 700),
+      learning: textValue(parsed.learning, fallback.learning, 700),
+      provider: 'gemini',
+    };
+  } catch (error) {
+    console.error('[Gemini Search Recommendation Fallback]:', error.message);
+    return fallback;
+  }
+};
+
 const bestChannelFor = (lead) => lead.email ? 'email' : ((lead.whatsapp || lead.phone) ? 'whatsapp' : (lead.instagram ? 'instagram' : ''));
 const recipientFor = (lead, channel) => channel === 'email' ? lead.email : (channel === 'instagram' ? (lead.instagram_link || lead.instagram) : (lead.whatsapp || lead.phone));
 

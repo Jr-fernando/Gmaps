@@ -164,7 +164,10 @@ export const folderService = {
 
 export const searchService = {
   getSaved: async () => handleResponse(await apiFetch('/api/searches')),
-  getById: async (id) => handleResponse(await apiFetch(`/api/searches/${id}`))
+  getById: async (id) => handleResponse(await apiFetch(`/api/searches/${id}`)),
+  recommend: async (current = {}) => handleResponse(await apiFetch('/api/searches/ai-recommend', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current })
+  }))
 };
 
 export const outreachService = {
